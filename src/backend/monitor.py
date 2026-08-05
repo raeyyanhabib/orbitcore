@@ -16,6 +16,7 @@ import traceback
 from datetime import datetime
 
 # Import database module from parent directory relative path
+# pyrefly: ignore [missing-import]
 import db
 
 # Fallback declarations for Windows API components in case libraries aren't installed yet
@@ -142,13 +143,13 @@ def performWebResearch(taskId, taskTitle, taskDescription=""):
             
             if searchResults:
                 writeToLog("INFO", f"DuckDuckGo search successful for: {taskTitle}")
-                    # Collect summaries from top search outputs to present to user
-                    lines = [result.get("body", "") for result in searchResults if result.get("body")]
-                    if lines:
-                        tipsResult["summary"] = f"Top research advice: {lines[0][:150]}..."
-                        # Populate tips from remaining results
-                        for index, line in enumerate(lines[:2]):
-                            tipsResult["actionableTips"][index] = line[:80] + "..."
+                # Collect summaries from top search outputs to present to user
+                lines = [result.get("body", "") for result in searchResults if result.get("body")]
+                if lines:
+                    tipsResult["summary"] = f"Top research advice: {lines[0][:150]}..."
+                    # Populate tips from remaining results
+                    for index, line in enumerate(lines[:2]):
+                        tipsResult["actionableTips"][index] = line[:80] + "..."
         except Exception as error:
             writeToLog("WARNING", f"DuckDuckGo search failed or offline: {str(error)}")
 
