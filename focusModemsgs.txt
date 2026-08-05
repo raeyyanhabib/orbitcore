@@ -1,0 +1,96 @@
+================================================================================
+                    ORBIT TASK TRACKER - FOCUS MODE MESSAGES
+                          Playful & Lighthearted Reminders
+================================================================================
+
+IMPLEMENTATION NOTES:
+- Messages randomly selected when user opens non-approved app during Focus Session
+- [TASK_NAME] and [APP_NAME] are dynamic placeholders filled at runtime
+- File can be edited by users to add/customize messages
+- Suggested: 15+ messages to keep variety and prevent message fatigue
+- Keep tone lighthearted, non-judgmental, and encouraging
+
+================================================================================
+                                 GENTLE REMINDERS
+================================================================================
+
+1. "Psst! Still working on [TASK_NAME]?"
+
+2. "[APP_NAME]? Really? I thought you were focused 👀"
+
+3. "Hey, you've got [TASK_NAME] to do!"
+
+4. "The task is calling... 📞"
+
+5. "Plot twist: You were supposed to be doing [TASK_NAME]"
+
+6. "Quick check: Was [APP_NAME] on your approved list? 🤔"
+
+7. "[TASK_NAME] is waiting for you ⏰"
+
+8. "I see what you did there... [APP_NAME] instead of [TASK_NAME] 😏"
+
+================================================================================
+                                 PLAYFUL NUDGES
+================================================================================
+
+9. "Task focus energy: **ON** | [APP_NAME] browsing: **DETECTED**"
+
+10. "Your task didn't distract itself! 👋"
+
+11. "[APP_NAME]'s music is nice, but [TASK_NAME] is waiting!"
+
+12. "Alternate universe where you're doing [TASK_NAME]... 👽"
+
+13. "POV: You meant to do [TASK_NAME]"
+
+14. "Error 404: Focus not found... jk, let's get back to [TASK_NAME]! 💪"
+
+15. "Notice: [TASK_NAME] status = PAUSED (accidentally)"
+
+================================================================================
+                            LIGHTHEARTED & HUMOROUS
+================================================================================
+
+16. "Quick reminder: Yes, Focus Mode is still active 🎯"
+
+17. "[APP_NAME] is fun, but [TASK_NAME] completion is funner"
+
+18. "Uh oh... Focus Mode detected: Task ≠ [APP_NAME]"
+
+19. "Is this the end of your [TASK_NAME] journey? Not yet!"
+
+20. "The clock is ticking and [TASK_NAME] is still waiting..."
+
+================================================================================
+                           TEMPLATE INSTRUCTIONS
+================================================================================
+
+To add your own messages:
+1. Keep them lighthearted and non-judgmental
+2. Use [TASK_NAME] and [APP_NAME] placeholders where appropriate
+3. Emoji optional but encouraged 🎉
+4. Max length ~60 characters (for display on small screens)
+5. Add to the appropriate section above or create new sections
+
+Example format:
+[NUMBER]. "Message text with [TASK_NAME] placeholder or [APP_NAME]"
+
+================================================================================
+                              USAGE IN FOCUS MODE
+================================================================================
+
+When triggered:
+- Message randomly selected from this list
+- Placeholders replaced with actual task and app names
+- Message displayed as colorful popup (cannot be dismissed without interaction)
+- Only one message shown per app-opening event (no message spamming)
+- Same message won't repeat immediately in the same session
+
+================================================================================
+
+Total messages available: 20+
+Recommended minimum: 15
+Last updated: 2026-05-27
+
+User can customize this file and restart app to load new messages.

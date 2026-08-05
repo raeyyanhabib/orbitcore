@@ -1,0 +1,6 @@
+node_modules/
+dist/
+orbit_tracker.db
+orbit_tracker.log
+.DS_Store
+*.local
