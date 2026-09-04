@@ -75,7 +75,7 @@ export default function FocusModeOverlay({ activeTask, monitorUpdate, onDismiss,
           </h3>
           
           <p className="text-sm text-gray-300 italic px-4 leading-relaxed">
-            "{activeMessage}"
+            {`"${activeMessage}"`}
           </p>
 
         </div>

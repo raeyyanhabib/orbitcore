@@ -51,6 +51,23 @@ export default function OrbitView({ taskList, activeTask, monitorUpdate, isFocus
     pointLight.position.set(0, 0, 0);
     scene.add(pointLight);
 
+    // Procedural Stars
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsCount = 1500;
+    const posArray = new Float32Array(starsCount * 3);
+    for (let i = 0; i < starsCount * 3; i++) {
+      posArray[i] = (Math.random() - 0.5) * 100;
+    }
+    starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const starsMaterial = new THREE.PointsMaterial({
+      size: 0.1,
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.8
+    });
+    const starMesh = new THREE.Points(starsGeometry, starsMaterial);
+    scene.add(starMesh);
+
     const sunGeometry = new THREE.SphereGeometry(2.4, 24, 24);
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0x6bd8cb });
     const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -151,6 +168,11 @@ export default function OrbitView({ taskList, activeTask, monitorUpdate, isFocus
         sunMesh.rotation.y += 0.005;
       }
 
+      if (starMesh) {
+        starMesh.rotation.y += 0.0005;
+        starMesh.rotation.x += 0.0002;
+      }
+
       planetsRef.current.forEach((planet) => {
         planet.angle += planet.speed;
         planet.mesh.position.x = Math.cos(planet.angle) * planet.radius;
@@ -203,7 +225,7 @@ export default function OrbitView({ taskList, activeTask, monitorUpdate, isFocus
   };
 
   return (
-    <div className="w-full h-full relative bg-background bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
+    <div className="w-full h-full relative bg-background">
       
       <div ref={mountRef} className="w-full h-full absolute inset-0 z-0" />
 

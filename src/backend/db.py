@@ -267,6 +267,21 @@ def logTimeSpent(connection, taskId, durationSeconds, isOnTask, appName, windowT
     return cursor.lastrowid
 
 
+def logTimeSpentBatch(connection, logs):
+    """
+    Logs multiple active app window checks to the time_logs database in a single transaction.
+    """
+    if not logs:
+        return
+        
+    cursor = connection.cursor()
+    cursor.executemany("""
+        INSERT INTO time_logs (task_id, duration_seconds, is_on_task, app_name, window_title)
+        VALUES (:task_id, :duration_seconds, :is_on_task, :app_name, :window_title)
+    """, logs)
+    connection.commit()
+
+
 def saveWebResearch(connection, taskId, tips):
     """
     Saves or replaces DuckDuckGo search queries in the cache database.
@@ -321,6 +336,138 @@ def saveSetting(connection, key, value):
         VALUES (?, ?)
     """, (key, str(value)))
     connection.commit()
+
+
+def getAnalytics(connection, dayRange=7):
+    """
+    Aggregates time_logs data for analytics dashboard.
+    Returns structured data for charts: heatmap, app usage, on-task ratio, etc.
+    """
+    cursor = connection.cursor()
+    
+    # 1. Get on-task vs off-task ratio for pie chart
+    cursor.execute("""
+        SELECT 
+            SUM(CASE WHEN is_on_task = 1 THEN duration_seconds ELSE 0 END) as on_task_seconds,
+            SUM(CASE WHEN is_on_task = 0 THEN duration_seconds ELSE 0 END) as off_task_seconds
+        FROM time_logs
+        WHERE timestamp > datetime('now', ?)
+    """, (f"-{dayRange} days",))
+    
+    ratioRow = cursor.fetchone()
+    onTaskSeconds = ratioRow["on_task_seconds"] or 0
+    offTaskSeconds = ratioRow["off_task_seconds"] or 0
+    
+    # 2. Get time per task (bar chart)
+    cursor.execute("""
+        SELECT 
+            t.title,
+            SUM(l.duration_seconds) as total_seconds
+        FROM time_logs l
+        JOIN tasks t ON l.task_id = t.id
+        WHERE l.timestamp > datetime('now', ?)
+        GROUP BY l.task_id
+        ORDER BY total_seconds DESC
+        LIMIT 5
+    """, (f"-{dayRange} days",))
+    
+    taskTimeRows = cursor.fetchall()
+    taskTimeData = [
+        {
+            "title": row["title"][:20],
+            "hours": round(row["total_seconds"] / 3600, 1)
+        }
+        for row in taskTimeRows
+    ]
+    
+    # 3. Get productivity streak (consecutive days with >1 hour focus)
+    cursor.execute("""
+        SELECT DISTINCT DATE(timestamp) as work_date
+        FROM time_logs
+        WHERE is_on_task = 1
+        GROUP BY DATE(timestamp)
+        HAVING SUM(duration_seconds) > 3600
+        ORDER BY work_date DESC
+    """)
+    
+    productiveDays = [row["work_date"] for row in cursor.fetchall()]
+    streak = 0
+    if productiveDays:
+        from datetime import datetime as dt, timedelta
+        today = dt.now().date()
+        for i, day_str in enumerate(productiveDays):
+            day_date = dt.strptime(day_str, "%Y-%m-%d").date()
+            expected_date = today - timedelta(days=i)
+            if day_date == expected_date:
+                streak += 1
+            else:
+                break
+    
+    # 4. Get heatmap data (hours worked per day of week)
+    cursor.execute("""
+        SELECT 
+            CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
+            SUM(duration_seconds) / 3600.0 as hours_worked
+        FROM time_logs
+        WHERE is_on_task = 1
+        GROUP BY day_of_week
+    """)
+    
+    heatmapRows = cursor.fetchall()
+    dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    heatmapData = {dayNames[row["day_of_week"]]: row["hours_worked"] for row in heatmapRows}
+    
+    return {
+        "onTaskSeconds": onTaskSeconds,
+        "offTaskSeconds": offTaskSeconds,
+        "taskTimeData": taskTimeData,
+        "streak": streak,
+        "heatmapData": heatmapData
+    }
+
+
+def getDailyInsights(connection):
+    cursor = connection.cursor()
+    
+    # Peak focus hour
+    cursor.execute("""
+        SELECT CAST(strftime('%H', timestamp) AS INTEGER) as hour
+        FROM time_logs
+        WHERE is_on_task = 1 AND DATE(timestamp) = DATE('now')
+        GROUP BY hour
+        ORDER BY SUM(duration_seconds) DESC
+        LIMIT 1
+    """)
+    peakHourRow = cursor.fetchone()
+    peakHour = peakHourRow["hour"] if peakHourRow else None
+    
+    # Top task today
+    cursor.execute("""
+        SELECT t.title, SUM(l.duration_seconds) as total_seconds
+        FROM time_logs l
+        JOIN tasks t ON l.task_id = t.id
+        WHERE DATE(l.timestamp) = DATE('now')
+        GROUP BY l.task_id
+        ORDER BY total_seconds DESC
+        LIMIT 1
+    """)
+    topTaskRow = cursor.fetchone()
+    topTask = topTaskRow["title"] if topTaskRow else "None"
+    
+    # Distraction count
+    cursor.execute("""
+        SELECT COUNT(*) as distraction_count
+        FROM time_logs
+        WHERE is_on_task = 0 AND DATE(timestamp) = DATE('now')
+    """)
+    distractionRow = cursor.fetchone()
+    distractionCount = distractionRow["distraction_count"] or 0
+    
+    return {
+        "peakHour": peakHour,
+        "topTask": topTask,
+        "distractionCount": distractionCount
+    }
 
 
 # Self-test block to verify table creation and DB connections when run standalone

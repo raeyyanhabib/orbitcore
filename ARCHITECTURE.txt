@@ -1,0 +1,535 @@
+﻿================================================================================
+                    ORBITCORE - FILE ARCHITECTURE MAP
+                    How files connect, what they own, and what they depend on
+                    Last updated: 2026-08-13
+================================================================================
+
+LEGEND
+  -->  sends data to / calls
+  <--  receives data from
+  <-> bidirectional
+  [IPC] Electron inter-process communication
+  [stdio] Python subprocess stdin/stdout pipe
+  [FS]  direct filesystem read/write
+
+
+================================================================================
+  LAYER 1 — ENTRY & PROCESS BOOTSTRAP
+================================================================================
+
+src/main/main.js
+  ROLE: Electron main process. App entry point. Owns window lifecycle,
+        spawns Python, and routes all IPC between renderer and Python.
+  OWNS:
+    - BrowserWindow instances (dashboardWindow, orbitWindow)
+    - pyProcess (child_process.spawn handle)
+    - dbFilePath, logFilePath (computed from app.getPath("userData"))
+    - spawnAttempts[] (crash backoff guard)
+  DEPENDS ON (Node built-ins):
+    - electron  { app, BrowserWindow, ipcMain, shell, dialog }
+    - path, fs, child_process.spawn, readline
+  READS FROM [FS]:
+    - focusModemsgs.txt  (root dir, parsed for overlay messages)
+    - settings JSON file (on importSettings dialog)
+  WRITES TO [FS]:
+    - orbit_tracker.log  (via appendFileSync fallback before Python is up)
+  SPAWNS:
+    - src/backend/monitor.py  [stdio]  (dev mode: python ./src/backend/monitor.py)
+    - dist/orbit_monitor.exe  [stdio]  (production: PyInstaller bundle)
+  SENDS [IPC] to renderer (via webContents.send):
+    - "tasks-list"        after every task mutation
+    - "settings-map"      after getSettings / saveSetting
+    - "monitor-update"    forwarded from Python stdout
+    - "focus-started"     forwarded from Python stdout
+    - "focus-stopped"     forwarded from Python stdout
+    - "research-complete" forwarded from Python stdout
+    - "heartbeat"         forwarded from Python stdout
+    - "monitor-status"    on Python crash/reconnect
+    - "focus-messages"    after loadFocusMessages() reads .txt file
+    - "settings-imported" / "settings-exported"  after file dialogs
+  RECEIVES [IPC] from renderer (via ipcMain.on "task-action"):
+    - changeMode    -> creates/hides BrowserWindows
+    - getFocusMessages -> reads focusModemsgs.txt, sends back
+    - exportSettings / importSettings -> dialog + file I/O
+    - everything else -> forwarded to Python via stdin
+  RECEIVES [stdio] from Python stdout:
+    - every JSON line: { channel, data } -> forwarded to open windows
+  CONNECTED TO:
+    - src/preload/preload.js  (referenced as webPreferences.preload)
+    - src/renderer/ (loaded via loadURL or loadFile)
+    - src/backend/monitor.py (spawned as child process)
+
+
+================================================================================
+  LAYER 2 — SECURITY BRIDGE
+================================================================================
+
+src/preload/preload.js
+  ROLE: Context-isolated bridge. The ONLY file that touches both
+        Node (ipcRenderer) and the browser window context. Exposes a
+        strict whitelist API as window.electronAPI.
+  DEPENDS ON (Electron):
+    - contextBridge, ipcRenderer
+  EXPOSES to renderer as window.electronAPI:
+    - sendTaskAction(action, payload)
+        Whitelisted actions: getAllTasks, createTask, completeTask,
+        deleteTask, startFocus, stopFocus, getSettings, saveSetting,
+        changeMode, getResearch, exportLogs, importSettings,
+        exportSettings, getFocusMessages
+        -> ipcRenderer.send("task-action", { action, payload })
+    - onReceiveFromMain(channel, callback)
+        Whitelisted channels: monitor-update, tasks-list,
+        research-complete, focus-started, focus-stopped, settings-map,
+        setting-saved, settings-imported, settings-exported,
+        focus-messages, monitor-status, heartbeat
+        Calls ipcRenderer.removeAllListeners(channel) before registering
+        (prevents listener duplication from the renderer side)
+    - writeLogEntry(level, message) -> ipcRenderer.send("write-log", ...)
+    - openLogFile() -> ipcRenderer.send("open-log-file")
+  CONNECTED TO:
+    - main.js (receives its IPC messages)
+    - All renderer components (consumes window.electronAPI)
+
+
+================================================================================
+  LAYER 3 — REACT RENDERER
+================================================================================
+
+src/renderer/main.jsx
+  ROLE: React DOM entry point. Mounts <App /> into index.html #root.
+  DEPENDS ON:
+    - react, react-dom/client
+    - ./App.jsx
+    - ./index.css
+  CONNECTED TO:
+    - App.jsx (renders it)
+    - index.css (imports it)
+
+------
+
+src/renderer/App.jsx
+  ROLE: Root component. Owns ALL global state. Routes between views.
+        Registers all IPC listeners. Drives mode transitions.
+  STATE OWNED:
+    - currentMode        "dashboard" | "orbit"
+    - activeTab          "tasks" | "analytics" | "settings"
+    - taskList[]         all tasks from DB
+    - activeTask         currently focused task object
+    - settings{}         key-value map from DB settings table
+    - focusMessages[]    parsed focusModemsgs.txt strings
+    - isFocusActive      bool
+    - monitorUpdate      last Python monitor-update payload
+    - todayFocusSeconds  accumulated from monitor-update isOnTask ticks
+    - monitorStatus      "connected" | "reconnecting" | "offline"
+    - toast              { show, type, message }
+    - isMobileMenuOpen   bool
+  DEPENDS ON:
+    - react (useState, useEffect)
+    - window.electronAPI (from preload.js)
+    - ./components/DashboardView.jsx
+    - ./components/OrbitView.jsx
+    - ./components/AnalyticsView.jsx
+    - ./components/SettingsView.jsx
+  IPC LISTENERS REGISTERED (via window.electronAPI.onReceiveFromMain):
+    - "tasks-list"        -> setTaskList, refreshes activeTask
+    - "settings-map"      -> setSettings
+    - "monitor-update"    -> setMonitorUpdate, accumulates todayFocusSeconds
+    - "focus-started"     -> setIsFocusActive(true), setActiveTask
+    - "focus-stopped"     -> setIsFocusActive(false), clears activeTask
+    - "focus-messages"    -> setFocusMessages
+    - "monitor-status"    -> setMonitorStatus
+    - "heartbeat"         -> resets monitorStatus to "connected"
+    - "settings-imported" -> re-fetches settings, shows toast
+    - "settings-exported" -> shows toast
+  IPC ACTIONS SENT on mount:
+    - getAllTasks, getSettings, getFocusMessages
+  PROPS PASSED DOWN:
+    -> DashboardView: taskList, activeTask, isFocusActive,
+                      monitorUpdate, focusMessages
+    -> OrbitView:     taskList, activeTask, monitorUpdate,
+                      isFocusActive, focusMessages, onBackToDashboard
+    -> AnalyticsView: taskList, todayFocusSeconds, triggerToast
+    -> SettingsView:  settings
+  CONNECTED TO:
+    - All 4 view components (conditional renders)
+    - preload.js window.electronAPI
+
+------
+
+src/renderer/components/DashboardView.jsx
+  ROLE: Main task management view. Shows task list, create form,
+        task detail panel, focus protocol, and auto-research panel.
+  STATE OWNED:
+    - taskTitle, taskType, taskPriority  (create form inputs)
+    - selectedTask  (which task is showing detail panel)
+    - researchTips  (cached DDG research for selected task)
+  DEPENDS ON:
+    - react (useState, useEffect — note: useEffect has selectedTask dep bug)
+    - window.electronAPI (sendTaskAction, onReceiveFromMain)
+  IPC ACTIONS SENT:
+    - createTask    { title, description, priority, taskType,
+                      targetApps, color, intervalDays }
+    - completeTask  { taskId }
+    - deleteTask    { taskId }
+    - startFocus    { taskId }
+    - stopFocus
+    - getResearch   { taskId }
+  IPC LISTENED:
+    - "research-complete" -> setResearchTips (if taskId matches selectedTask)
+  RECEIVES PROPS FROM: App.jsx
+    - taskList, activeTask, isFocusActive, monitorUpdate, focusMessages
+  CONNECTED TO:
+    - App.jsx (receives props)
+    - preload.js window.electronAPI (sends actions)
+  NOTE: Does NOT import any child components. Self-contained view.
+
+------
+
+src/renderer/components/OrbitView.jsx
+  ROLE: Fullscreen 3D solar system. Each active task = one orbiting planet.
+        Handles planet click to show task popup, hosts FocusModeOverlay.
+  STATE OWNED:
+    - selectedTask  (planet was clicked, shows info panel)
+    - showFocusModal  (not actually used to gate anything currently)
+  REFS:
+    - mountRef    (div that Three.js renderer is attached to)
+    - sceneRef, rendererRef, sunMeshRef, planetsRef[]
+  DEPENDS ON:
+    - react (useRef, useEffect, useState)
+    - three  (THREE.Scene, Camera, Renderer, Mesh, Raycaster, etc.)
+    - window.electronAPI
+    - ./FocusModeOverlay.jsx
+  THREE.JS OBJECTS CREATED:
+    - Scene with null background (transparent)
+    - PerspectiveCamera at (0, 18, 25)
+    - WebGLRenderer with alpha:true
+    - AmbientLight + PointLight
+    - SphereGeometry sun (color changes with focus state)
+    - Per-task: orbit ring (Line), planet SphereGeometry, planet Mesh
+    - Raycaster for click detection on planet meshes
+  ANIMATION LOOP:
+    - Capped at 30 FPS via fpsInterval delta guard
+    - Sun rotates Y. Planets advance angle along orbit radius.
+  IPC ACTIONS SENT:
+    - startFocus    { taskId }  (from planet popup button)
+    - completeTask  { taskId }  (from planet popup button)
+    - stopFocus                 (delegated to FocusModeOverlay)
+  EXTERNAL ASSET (FRAGILE):
+    - https://www.transparenttextures.com/patterns/stardust.png
+      (background CSS, fails offline)
+  RECEIVES PROPS FROM: App.jsx
+    - taskList, activeTask, monitorUpdate, isFocusActive,
+      focusMessages, onBackToDashboard
+  CONNECTED TO:
+    - App.jsx (parent)
+    - FocusModeOverlay.jsx (child, rendered inside)
+    - three npm package
+    - preload.js window.electronAPI
+
+------
+
+src/renderer/components/FocusModeOverlay.jsx
+  ROLE: Modal that fires when monitorUpdate.isOnTask is false during
+        focus mode. Shows a random playful message from focusModemsgs.txt.
+        Allows dismissing or pausing the focus session.
+  STATE OWNED:
+    - activeMessage  (resolved message string from template)
+  DEPENDS ON:
+    - react (useState, useEffect)
+    - window.electronAPI (via onPauseFocus prop callback -> stopFocus)
+  LOGIC:
+    - Uses focusMessages prop if available, else falls back to
+      hardcoded fallbackTemplates array
+    - Replaces [TASK_NAME] and [APP_NAME] placeholders in selected template
+    - BUG: line 78 renders "{activeMessage}" as a string literal
+      because the JSX expression is inside regular quote characters
+  RECEIVES PROPS FROM: OrbitView.jsx (also could be placed in App.jsx)
+    - activeTask, monitorUpdate, onDismiss, onPauseFocus, focusMessages
+  CONNECTED TO:
+    - OrbitView.jsx (parent, passes props)
+    - App.jsx (focusMessages originate here)
+
+------
+
+src/renderer/components/AnalyticsView.jsx
+  ROLE: Analytics dashboard showing KPI cards, productivity heatmap,
+        app usage bars, and CSV export button.
+  STATE OWNED:
+    - exporting  (bool, disables export button briefly)
+  DEPENDS ON:
+    - react (useState, useEffect — useEffect not actually used currently)
+    - window.electronAPI
+  DATA SOURCES (all currently fake):
+    - todayFocusSeconds prop from App.jsx  (only real live data)
+    - Completion rate: derived from taskList prop  (real)
+    - Heatmap: Math.random() array, re-generated on mount
+    - App usage: hardcoded constants
+    - Streak: hardcoded "5"
+  IPC ACTIONS SENT:
+    - exportLogs  (triggers CSV export to ~/Desktop/)
+  RECEIVES PROPS FROM: App.jsx
+    - taskList, todayFocusSeconds, triggerToast
+  CONNECTED TO:
+    - App.jsx (parent)
+    - preload.js window.electronAPI
+  NOTE: chart.js and react-chartjs-2 are in package.json but NOT
+        imported or used anywhere in the current codebase. Installed
+        but dead weight until analytics is wired to real data.
+
+------
+
+src/renderer/components/SettingsView.jsx
+  ROLE: Settings UI with 4 panels: Display, Monitoring, Behavioral, Data.
+        Reads settings from props, writes changes via IPC immediately.
+  STATE OWNED:
+    - localSettings  (mirror of settings prop for controlled inputs)
+  DEPENDS ON:
+    - react (useState, useEffect)
+    - window.electronAPI
+  IPC ACTIONS SENT:
+    - saveSetting   { key, value }  (on every toggle/select change)
+    - exportSettings  (opens native Save dialog in main.js)
+    - importSettings  (opens native Open dialog in main.js)
+  RECEIVES PROPS FROM: App.jsx
+    - settings  (key-value map from DB)
+  SETTINGS KEYS WRITTEN:
+    - animations        "true" | "false"
+    - checkInterval     "1" | "3" | "5"
+    - researchEnabled   "true" | "false"
+    - audioBeeps        "true" | "false"
+    - retentionDays     "30" | "90" | "365"
+  CONNECTED TO:
+    - App.jsx (parent)
+    - preload.js window.electronAPI
+  NOTE: Theme toggle button has no handler. Purely visual.
+
+------
+
+src/renderer/index.css
+  ROLE: Global CSS. Tailwind base + custom design tokens, scrollbar
+        styles, and animation keyframes.
+  DEPENDS ON: tailwindcss (via PostCSS)
+  CONNECTED TO: main.jsx (imported), tailwind.config.js (config)
+
+index.html
+  ROLE: Shell HTML file. Loads main.jsx as ES module entry point.
+        Pulls in Google Fonts (Space Grotesk, Inter) and
+        Material Symbols from Google CDN.
+  CONNECTED TO: src/renderer/main.jsx (via <script type="module">)
+
+================================================================================
+  LAYER 4 — PYTHON BACKEND
+================================================================================
+
+src/backend/monitor.py
+  ROLE: Python subprocess. Single long-running process that handles all
+        DB operations, window monitoring, web research, and audio beeps.
+        Communicates exclusively via stdin (receive) / stdout (send).
+  GLOBAL STATE:
+    - activeTask     dict | None
+    - focusActive    bool
+    - monitorThread  Thread | None
+    - soundThread    Thread | None
+    - dbFilePath     str  (default "orbit_tracker.db", updated by setPaths)
+    - logFilePath    str  (default "orbit_tracker.log", updated by setPaths)
+  DEPENDS ON (Python stdlib):
+    - os, sys, json, time, random, threading, traceback, datetime
+  DEPENDS ON (Python third-party, optional):
+    - win32gui, win32process  (pywin32) — active window handle
+    - psutil                  — process name from PID
+    - winsound                — accountability beep
+    - duckduckgo_search       — web research (DDGS class)
+    - db.py                   — all SQLite operations (local import)
+  THREADS SPAWNED:
+    - heartbeatThread()       daemon, sends heartbeat every 5s forever
+    - monitorFocusLoop()      daemon, runs while focusActive==True
+    - playAccountabilityBeeps() daemon, runs while focusActive==True
+    - performWebResearch()    daemon, per-task on createTask
+  STDIN ACTIONS HANDLED:
+    - setPaths        { dbPath, logPath }  -> updates globals, createTables, pruneOldLogs
+    - getAllTasks      -> db.getAllTasks -> sendToElectron("tasks-list", ...)
+    - createTask      { title, ... }  -> db.createNewTask, getAllTasks, research thread
+    - completeTask    { taskId }  -> db.updateTask(is_completed=1)
+    - deleteTask      { taskId }  -> db.deleteTask
+    - startFocus      { taskId }  -> starts monitorThread + soundThread
+    - stopFocus       -> sets focusActive=False
+    - saveSetting     { key, value }  -> db.saveSetting, sends updated settings-map
+    - getSettings     -> db.getSettings -> sendToElectron("settings-map", ...)
+    - getResearch     { taskId }  -> db.getWebResearch -> sendToElectron("research-complete", ...)
+    - exportLogs      -> db.exportLogsToCSV to ~/Desktop/orbit_focus_logs.csv
+    - exportSettingsFile { filePath }  -> writes JSON settings file
+    - logEntry        { level, message }  -> writes to log file
+  STDOUT CHANNELS EMITTED:
+    - "heartbeat"         every 5s
+    - "tasks-list"        after any task mutation
+    - "settings-map"      after any settings change
+    - "monitor-update"    { taskId, appName, windowTitle, isOnTask, interval }
+    - "focus-started"     { taskId }
+    - "focus-stopped"     { status }
+    - "research-complete" { taskId, tips }
+    - "paths-initialized" { status }
+    - "settings-exported" { success }
+  CONNECTED TO:
+    - main.js (parent process via stdio)
+    - db.py (direct import, all DB calls go through it)
+    - orbit_tracker.db (via db.py)
+    - orbit_tracker.log (direct file write)
+
+------
+
+src/backend/db.py
+  ROLE: Pure SQLite wrapper. No threads, no I/O beyond the DB file.
+        All functions take a connection as first arg and return plain
+        Python dicts/lists. Called exclusively by monitor.py.
+  DEPENDS ON (Python stdlib):
+    - os, sqlite3, json, datetime, csv
+  DATABASE FILE:
+    - orbit_tracker.db (path passed in at runtime)
+  TABLES MANAGED:
+    - tasks           id, title, description, notes, priority, tags,
+                      type, interval_days, target_apps, color,
+                      is_completed, created_at, completed_at
+    - time_logs       id, task_id (FK), timestamp, duration_seconds,
+                      is_on_task, app_name, window_title
+    - web_research    id, task_id (FK UNIQUE), tips (JSON), updated_at
+    - settings        key (PK), value
+  INDEXES:
+    - idx_time_logs_task_id
+    - idx_time_logs_timestamp
+  FUNCTIONS EXPORTED:
+    - getDatabaseConnection(dbPath)  -> connection (WAL mode, Row factory)
+    - createTables(connection)       -> schema init + user_version=1
+    - pruneOldLogs(connection, days) -> DELETE old time_logs
+    - exportLogsToCSV(connection, csvFilePath)
+    - createNewTask(connection, title, ...)  -> lastrowid
+    - getAllTasks(connection)        -> list[dict]
+    - updateTask(connection, taskId, **fields)
+    - deleteTask(connection, taskId)
+    - logTimeSpent(connection, taskId, duration, isOnTask, appName, title)
+    - saveWebResearch(connection, taskId, tips)
+    - getWebResearch(connection, taskId)  -> dict | None
+    - getSettings(connection)  -> dict
+    - saveSetting(connection, key, value)
+  CONNECTED TO:
+    - monitor.py (only caller)
+    - orbit_tracker.db (SQLite file on disk)
+
+
+================================================================================
+  LAYER 5 — BUILD & CONFIG
+================================================================================
+
+vite.config.js
+  ROLE: Vite bundler config. Sets React plugin, resolves src/renderer
+        as root, outputs to /dist.
+  CONNECTED TO: src/renderer/ (build source), dist/ (build output)
+
+tailwind.config.js
+  ROLE: Tailwind design token config. Defines all custom colors
+        (primary, secondary, tertiary, surface, error, etc.),
+        typography scale, and spacing tokens used across all .jsx files.
+  CONNECTED TO: src/renderer/ (all JSX/CSS files consume these tokens)
+
+postcss.config.js
+  ROLE: PostCSS pipeline. Runs tailwindcss and autoprefixer.
+  CONNECTED TO: index.css (processed through this pipeline)
+
+run.bat
+  ROLE: Dev launcher script. Starts Vite dev server and Electron
+        in parallel with a single command.
+  CONNECTED TO: package.json scripts (npm run dev, electron .)
+
+package.json
+  ROLE: Project manifest. Defines entry point, scripts, and dependencies.
+  MAIN ENTRY: src/main/main.js  (Electron process)
+  JS DEPENDENCIES:
+    - react ^19.2.6
+    - react-dom ^19.2.6
+    - three ^0.184.0               (3D solar system in OrbitView.jsx)
+    - chart.js ^4.5.1              (installed, NOT YET USED in code)
+    - react-chartjs-2 ^5.3.1       (installed, NOT YET USED in code)
+  DEV DEPENDENCIES:
+    - electron ^42.2.0
+    - vite ^8.0.14
+    - @vitejs/plugin-react ^6.0.3
+    - tailwindcss ^3.4.19
+    - postcss ^8.5.15
+    - autoprefixer ^10.5.0
+  PYTHON DEPENDENCIES (not in package.json - install manually):
+    - pywin32   (win32gui, win32process)
+    - psutil
+    - duckduckgo_search
+    (all optional - monitor.py degrades gracefully if missing)
+
+
+================================================================================
+  DATA FLOW SUMMARY
+================================================================================
+
+USER ACTION (e.g. create task)
+  -> DashboardView.jsx  calls window.electronAPI.sendTaskAction("createTask", ...)
+  -> preload.js         validates action, sends ipcRenderer.send("task-action", ...)
+  -> main.js            receives ipcMain.on("task-action"), forwards to Python stdin
+  -> monitor.py         reads from sys.stdin, calls db.createNewTask()
+  -> db.py              executes INSERT INTO tasks, commits to orbit_tracker.db
+  -> monitor.py         calls db.getAllTasks(), sends JSON to sys.stdout
+  -> main.js            readline reads Python stdout line, calls
+                        dashboardWindow.webContents.send("tasks-list", data)
+  -> preload.js         ipcRenderer.on("tasks-list") fires callback
+  -> App.jsx            setTaskList(tasks) -> re-renders DashboardView + OrbitView
+
+FOCUS SESSION START
+  -> DashboardView.jsx  sendTaskAction("startFocus", { taskId })
+  -> main.js            forwards to Python stdin
+  -> monitor.py         sets focusActive=True, spawns monitorFocusLoop thread
+  -> monitorFocusLoop   every N seconds: win32gui.GetForegroundWindow()
+                        -> db.logTimeSpent() -> sendToElectron("monitor-update", ...)
+  -> main.js            forwards to all open windows
+  -> App.jsx            setMonitorUpdate -> re-renders OrbitView / FocusModeOverlay
+  -> FocusModeOverlay   if !isOnTask: shows distraction alert modal
+
+WINDOW MODE SWITCH (orbit)
+  -> App.jsx            handleModeTransition("orbit") -> sends changeMode IPC
+  -> main.js            createOrbitWindow() OR orbitWindow.show()
+                        dashboardWindow.hide()   <-- NOTE: hide not close
+                        (BUG: RAM does not drop)
+
+
+================================================================================
+  SAFE CHOPPING GUIDE (context window scoping)
+================================================================================
+
+To work on TASK CRUD only:
+  Load: DashboardView.jsx, App.jsx (state + IPC section),
+        monitor.py (createTask/completeTask/deleteTask handlers), db.py
+
+To work on 3D ORBIT VIEW only:
+  Load: OrbitView.jsx, FocusModeOverlay.jsx, App.jsx (props passed to OrbitView)
+  External: three package API docs
+
+To work on ANALYTICS only:
+  Load: AnalyticsView.jsx, db.py (time_logs/tasks queries),
+        monitor.py (exportLogs handler)
+  Note: chart.js / react-chartjs-2 already installed, just not used yet
+
+To work on SETTINGS only:
+  Load: SettingsView.jsx, monitor.py (saveSetting/getSettings/exportSettingsFile),
+        db.py (saveSetting/getSettings), main.js (importSettings/exportSettings handlers)
+
+To work on WINDOW SIZING / MODE SWITCHING:
+  Load: main.js (createDashboardWindow, createOrbitWindow, changeMode handler)
+  No Python or React changes needed
+
+To work on IPC / RACE CONDITION BUG:
+  Load: main.js (app.whenReady, sendActionToPython, setTimeout on line 349),
+        monitor.py (handleIncomingActions setPaths block, global dbFilePath),
+        App.jsx (useEffect lines 31-100)
+
+To work on FOCUS OVERLAY BUG:
+  Load: FocusModeOverlay.jsx only (line 78 fix)
+
+To work on PYTHON MONITORING LOOP only:
+  Load: monitor.py (monitorFocusLoop, getActiveWindowDetails,
+        playAccountabilityBeeps), db.py (logTimeSpent)
+
+================================================================================

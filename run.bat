@@ -1,6 +1,15 @@
 @echo off
 rem ORBIT TASK TRACKER - RUNNER & SETUP SCRIPT
 rem Automates dependency checks, npm/pip installations, and launches the application.
+rem
+rem Double-click friendly: if not already running in a named console, relaunch
+rem in a persistent window so output is visible and prompts can be answered.
+
+if not defined ORBITCORE_CONSOLE (
+    set ORBITCORE_CONSOLE=1
+    start "Orbit Core Setup & Run Console" cmd /K ""%~f0""
+    exit /b
+)
 
 title Orbit Core Setup & Run Console
 color 0B

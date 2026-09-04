@@ -2,7 +2,7 @@
 // Core Electron main process.
 // Spawns Python backend, pipes standard streams, and manages window lifecycles.
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -100,15 +100,19 @@ function spawnPythonSubprocess() {
 
   // Spawn backend process based on environment
   if (isDev) {
-    // Development mode: spawn using system Python interpreter
-    pyProcess = spawn("python", ["./src/backend/monitor.py"]);
+    // Development mode: spawn using system Python interpreter with unbuffered stdio (-u)
+    pyProcess = spawn("python", ["-u", "./src/backend/monitor.py"], {
+      env: { ...process.env, PYTHONUNBUFFERED: "1" }
+    });
   } else {
     // Production mode: spawn the compiled PyInstaller executable
     const binaryPath = path.join(
       process.resourcesPath,
       "src/backend/dist/orbit_monitor/orbit_monitor.exe"
     );
-    pyProcess = spawn(binaryPath);
+    pyProcess = spawn(binaryPath, [], {
+      env: { ...process.env, PYTHONUNBUFFERED: "1" }
+    });
   }
 
   // 1. Create a line-by-line readline interface on Python stdout stream
@@ -122,6 +126,10 @@ function spawnPythonSubprocess() {
     try {
       const message = JSON.parse(line);
       const { channel, data } = message;
+
+      if (channel === "paths-initialized-from-python") {
+        ipcMain.emit("paths-initialized-from-python");
+      }
 
       // Broadcast parsed message channels to open renderer windows
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
@@ -167,14 +175,15 @@ function spawnPythonSubprocess() {
 
 /**
  * Sends a structured command and payload to Python via standard input.
+ * Ensures stdout/stdin IPC channels remain unbuffered and flushed across Electron subprocesses.
  */
 function sendActionToPython(action, payload = {}) {
   if (pyProcess && !pyProcess.killed && pyProcess.stdin.writable) {
-    // Append newline to mark line completion for Python sys.stdin reads
+    writeLog("INFO", `Transmitting action '${action}' to Python backend via stdin.`);
     const message = JSON.stringify({ action, payload }) + "\n";
     pyProcess.stdin.write(message);
   } else {
-    writeLog("ERROR", `sendActionToPython blocked — process not running.`);
+    writeLog("ERROR", `sendActionToPython blocked for '${action}' — process not running or stdin closed.`);
   }
 }
 
@@ -272,15 +281,20 @@ function attachNavigationGuard(windowRef) {
  */
 function createDashboardWindow() {
   dashboardWindow = new BrowserWindow({
-    width: 1100,
-    height: 750,
+    width: 1280,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
     title: "Orbit Task Tracker",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  dashboardWindow.setMenuBarVisibility(false);
 
   const isDev = !app.isPackaged;
 
@@ -304,13 +318,11 @@ function createDashboardWindow() {
  */
 function createOrbitWindow() {
   orbitWindow = new BrowserWindow({
-    width: 900,
-    height: 600,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: true,
+    resizable: false,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -326,6 +338,8 @@ function createOrbitWindow() {
     orbitWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
 
+  orbitWindow.maximize();
+
   // Attach navigation guard to Orbit window
   attachNavigationGuard(orbitWindow);
 
@@ -338,6 +352,9 @@ function createOrbitWindow() {
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // Disable global window menu bar
+  Menu.setApplicationMenu(null);
+
   // Resolve AppData paths
   getStoragePaths();
   writeLog("INFO", "Electron app ready. Initializing...");
@@ -345,13 +362,16 @@ app.whenReady().then(() => {
   // Launch background Python process
   spawnPythonSubprocess();
 
+  // Wait for paths-initialized before showing dashboard
+  ipcMain.once("paths-initialized-from-python", () => {
+    writeLog("INFO", "Python backend initialized. Creating dashboard window.");
+    createDashboardWindow();
+  });
+
   // Transmit storage paths to Python with small delay to let streams start up
   setTimeout(() => {
     sendActionToPython("setPaths", { dbPath: dbFilePath, logPath: logFilePath });
-  }, 500);
-
-  // Initialize and display main Dashboard window
-  createDashboardWindow();
+  }, 200);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -369,28 +389,31 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     writeLog("INFO", `Mode transition requested: ${targetMode}`);
 
     if (targetMode === "orbit") {
-      // Launch or display Orbit window
+      // CLOSE dashboard (don't hide)
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        dashboardWindow.close();
+        dashboardWindow = null;
+      }
+      
+      // Launch Orbit window if not exists
       if (!orbitWindow) {
         createOrbitWindow();
       } else {
         orbitWindow.show();
       }
       
-      // Hide Dashboard rather than closing, saving WebGL context teardowns
-      if (dashboardWindow) {
-        dashboardWindow.hide();
-      }
     } else {
-      // Launch or display Dashboard window
+      // CLOSE orbit window
+      if (orbitWindow && !orbitWindow.isDestroyed()) {
+        orbitWindow.close();
+        orbitWindow = null;
+      }
+      
+      // Relaunch dashboard
       if (!dashboardWindow) {
         createDashboardWindow();
       } else {
         dashboardWindow.show();
-      }
-
-      // Hide Orbit overlay window
-      if (orbitWindow) {
-        orbitWindow.hide();
       }
     }
 

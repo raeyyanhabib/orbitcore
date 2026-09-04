@@ -6,6 +6,7 @@ import DashboardView from "./components/DashboardView.jsx";
 import OrbitView from "./components/OrbitView.jsx";
 import AnalyticsView from "./components/AnalyticsView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
+import FirstRunModal from "./components/FirstRunModal.jsx";
 
 export default function App() {
   const [currentMode, setCurrentMode] = useState("dashboard"); // 'dashboard' | 'orbit'
@@ -20,6 +21,24 @@ export default function App() {
   const [monitorStatus, setMonitorStatus] = useState("connected");
   const [toast, setToast] = useState({ show: false, type: "success", message: "" });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState("dark");
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [showFirstRunModal, setShowFirstRunModal] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("orbitcore-theme") || "dark";
+    setTheme(savedTheme);
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    document.documentElement.className = savedTheme;
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    document.documentElement.setAttribute("data-theme", newTheme);
+    document.documentElement.className = newTheme;
+    localStorage.setItem("orbitcore-theme", newTheme);
+  };
 
   const triggerToast = (type, message) => {
     setToast({ show: true, type, message });
@@ -30,38 +49,50 @@ export default function App() {
 
   useEffect(() => {
     window.electronAPI.onReceiveFromMain("tasks-list", (tasks) => {
+      console.log("📥 Received tasks-list:", tasks);
       setTaskList(tasks);
-      if (activeTask) {
-        const refreshed = tasks.find(t => t.id === activeTask.id);
-        if (refreshed && refreshed.is_completed) {
-          setActiveTask(null);
-          setIsFocusActive(false);
-        } else if (refreshed) {
-          setActiveTask(refreshed);
+      
+      // Keep active task updated if still in list
+      setActiveTask(prev => {
+        if (!prev) return null;
+        const updated = tasks.find(t => t.id === prev.id);
+        
+        if (updated && updated.is_completed) {
+          // Task was completed elsewhere, clear it
+          return null;
         }
-      }
+        return updated || null;
+      });
     });
 
     window.electronAPI.onReceiveFromMain("settings-map", (settingsMap) => {
+      console.log("⚙️ Received settings-map:", settingsMap);
       setSettings(settingsMap);
+      if (!settingsMap.firstRunComplete || settingsMap.firstRunComplete === "false") {
+        setShowFirstRunModal(true);
+      }
     });
 
     window.electronAPI.onReceiveFromMain("monitor-update", (update) => {
+      console.log("📊 Monitor update:", update);
       setMonitorUpdate(update);
+      
       if (update.isOnTask) {
         setTodayFocusSeconds(prev => prev + (update.interval || 3));
       }
     });
 
     window.electronAPI.onReceiveFromMain("focus-started", (data) => {
+      console.log("✅ Focus started:", data);
       setIsFocusActive(true);
-      const task = taskList.find(t => t.id === data.taskId);
-      if (task) {
-        setActiveTask(task);
-      }
+      setActiveTask(prev => {
+        // Get current task from component state without reading taskList
+        return data.task || prev;
+      });
     });
 
     window.electronAPI.onReceiveFromMain("focus-stopped", () => {
+      console.log("⏹️ Focus stopped");
       setIsFocusActive(false);
       setActiveTask(null);
       setMonitorUpdate(null);
@@ -94,10 +125,15 @@ export default function App() {
       }
     });
 
+    window.electronAPI.onReceiveFromMain("analytics-data", (data) => {
+      setAnalyticsData(data);
+    });
+
     window.electronAPI.sendTaskAction("getAllTasks");
     window.electronAPI.sendTaskAction("getSettings");
     window.electronAPI.sendTaskAction("getFocusMessages");
-  }, [taskList, activeTask]);
+    window.electronAPI.sendTaskAction("getAnalytics", { dayRange: 7 });
+  }, []);
 
   useEffect(() => {
     let heartbeatTimeout;
@@ -188,42 +224,18 @@ export default function App() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="flex-1 md:ml-64 relative min-h-screen flex flex-col w-full">
+      <main className="flex-1 md:ml-64 relative h-screen overflow-y-auto custom-scrollbar flex flex-col w-full">
         
-        {/* TopNavBar */}
-        <header className="fixed top-0 w-full z-30 flex justify-between items-center px-gutter py-4 max-w-7xl mx-auto md:w-[calc(100%-16rem)] bg-surface/80 backdrop-blur-md shadow-sm border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-on-surface-variant p-2 hover:bg-white/5 rounded-full transition-all">
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <h1 className="text-headline-md font-headline-md font-extrabold text-primary tracking-tight capitalize">
-              {activeTab}
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end mr-4">
-               {activeTask && (
-                 <span className="text-label-sm font-label-sm text-on-surface-variant flex items-center gap-1">
-                   <span className="material-symbols-outlined text-[14px]">track_changes</span> 
-                   {activeTask.title}
-                 </span>
-               )}
-               <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`w-2 h-2 rounded-full ${monitorStatus === "connected" ? "bg-tertiary animate-pulse" : monitorStatus === "reconnecting" ? "bg-secondary animate-pulse" : "bg-error"}`}></span>
-                  <span className="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">
-                    {monitorStatus}
-                  </span>
-               </div>
-            </div>
-            <button className="text-on-surface-variant hover:text-primary transition-colors hover:bg-white/5 p-2 rounded-full scale-95 active:scale-90 duration-200 relative">
-              <span className="material-symbols-outlined">notifications</span>
-              {isFocusActive && <span className="absolute top-1 right-2 w-2 h-2 bg-secondary-container rounded-full animate-pulse"></span>}
-            </button>
-          </div>
-        </header>
-
         {/* Dashboard Content */}
-        <div className="mt-24 px-4 sm:px-gutter lg:px-section-gap pb-24 max-w-[1600px] w-full mx-auto flex-1 flex flex-col">
+        <div className="pt-6 px-4 sm:px-gutter lg:px-section-gap pb-24 max-w-[1600px] w-full mx-auto flex-1 flex flex-col">
+          {/* Mobile menu trigger when menu is closed */}
+          <div className="md:hidden flex items-center justify-between mb-4">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="text-on-surface-variant hover:text-primary p-2 bg-surface-container border border-white/5 rounded-xl transition-all flex items-center gap-2 font-label-md">
+              <span className="material-symbols-outlined">menu</span> Menu
+            </button>
+            <h1 className="text-headline-sm font-bold text-primary capitalize">{activeTab}</h1>
+          </div>
+
           {activeTab === "tasks" && (
             <DashboardView 
               taskList={taskList}
@@ -231,6 +243,7 @@ export default function App() {
               isFocusActive={isFocusActive}
               monitorUpdate={monitorUpdate}
               focusMessages={focusMessages}
+              analyticsData={analyticsData}
             />
           )}
 
@@ -238,6 +251,7 @@ export default function App() {
             <AnalyticsView 
               taskList={taskList}
               todayFocusSeconds={todayFocusSeconds}
+              analyticsData={analyticsData}
               triggerToast={triggerToast}
             />
           )}
@@ -245,6 +259,8 @@ export default function App() {
           {activeTab === "settings" && (
             <SettingsView 
               settings={settings}
+              theme={theme}
+              toggleTheme={toggleTheme}
             />
           )}
         </div>
@@ -267,6 +283,10 @@ export default function App() {
           }`}>
             {toast.message}
           </div>
+        )}
+
+        {showFirstRunModal && (
+          <FirstRunModal onComplete={() => setShowFirstRunModal(false)} />
         )}
       </main>
     </div>

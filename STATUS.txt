@@ -1,0 +1,153 @@
+﻿================================================================================
+                         ORBITCORE - STATUS FILE
+                         Last updated: 2026-08-13
+================================================================================
+
+--- KNOWN BUGS ---
+
+--- CRITICAL ---
+
+1. [monitor.py + main.js] DATABASE RACE CONDITION - tasks never persist.
+   ROOT CAUSE: Electron sends "getAllTasks" to Python (App.jsx line 97-98)
+   before "setPaths" has been fully processed. setPaths is sent with a
+   500ms setTimeout (main.js line 349), but the Vite dev server loads
+   React in ~200-300ms. React fires getAllTasks immediately on mount,
+   which hits Python before dbFilePath is updated from the default
+   "orbit_tracker.db" (monitor.py line 46). So all reads/writes go to a
+   local working-directory file instead of AppData, and the UI never
+   sees the right data.
+   Fix: Python should queue getAllTasks/createTask etc. until after
+   setPaths is processed, OR Electron only opens the window after
+   receiving the "paths-initialized" response from Python.
+
+2. [OrbitView.jsx] PLANETS NEVER RENDER - direct consequence of bug #1.
+   taskList is always [] on startup because getAllTasks returns from the
+   wrong (empty) DB. Three.js scene builds with zero planets.
+   Fix bug #1 and planets appear automatically.
+
+3. [App.jsx] IPC LISTENER LEAK - listeners pile up on every render.
+   taskList and activeTask are in the useEffect dependency array (line 100).
+   Every task change re-registers ALL IPC listeners AND re-fires
+   getAllTasks + getSettings, causing duplicate DB reads and state loops.
+   Fix: separate IPC registration into a useEffect([]) that runs once only.
+
+4. [FocusModeOverlay.jsx line 78] MESSAGE RENDERS AS LITERAL TEXT.
+   The JSX is: "{activeMessage}" - variable is inside JS string quotes
+   so it prints the characters {activeMessage} literally.
+   Fix: change to {`"${activeMessage}"`} or just {activeMessage}.
+
+--- MEDIUM ---
+
+5. [SettingsView.jsx] Theme toggle (Dark/Light) is purely cosmetic.
+   No class is toggled on the root element. Clicking Light does nothing.
+
+6. [AnalyticsView.jsx] ALL analytics data is fake / not from SQLite.
+   - Heatmap: Math.random() regenerated on every mount.
+   - App Usage bars: hardcoded VS Code 45%, Chrome 30%, etc.
+   - Current Streak: hardcoded "5 days".
+   - Screentime: counted from React state only, not from DB time_logs.
+
+7. [DashboardView.jsx] Daily Insights widget is 100% hardcoded.
+   "Peak Focus Time 10:00-12:30", task count is real but insight is static.
+
+8. [OrbitView.jsx] Planet positions reset to random angles every time
+   taskList changes while Orbit View is open, which is jarring.
+
+--- MINOR ---
+
+9. [monitor.py] getSettings() called on every 3s monitorFocusLoop tick,
+   opening a new DB connection each time. Wasteful - should read once
+   on focus start and update only when saveSetting fires.
+
+10. [main.js] changeMode HIDES the old window, not closes it.
+    The hidden dashboard keeps its full Vite renderer alive in memory.
+    RAM does NOT drop when switching to Orbit Mode.
+
+11. [OrbitView.jsx line 206] External stardust texture loaded from
+    transparenttextures.com - fails offline, breaks the space background.
+
+
+--- WINDOW SIZES (MODE SWITCHING) ---
+
+Current sizes are arbitrary and feel identical across modes.
+Recommended per-mode sizing for psychological impact:
+
+DASHBOARD MODE  (main.js createDashboardWindow)
+  Current:  1100 x 750
+  Target:   1280 x 800, minWidth 900
+  Rationale: Standard productivity app feel. Wide sidebar + grid layout.
+
+ORBIT MODE  (main.js createOrbitWindow)
+  Current:  900 x 600, always-on-top, transparent
+  Target:   Maximize the window (call orbitWindow.maximize()).
+             The 3D solar system needs space to breathe and impress.
+             CLOSE the dashboard window instead of hiding it when
+             switching to Orbit - the user will see an immediate RAM
+             drop in Task Manager and feel the mode change is real.
+             Re-create it when switching back.
+
+FOCUS ALERT  (currently rendered inside the active window)
+  Target:   Dedicated small always-on-top BrowserWindow, ~420 x 280.
+             Feels like a real system notification, not a UI overlay.
+             Compact, unobtrusive, positioned bottom-right corner.
+
+Key rule: each mode should open at a noticeably different size AND
+position. Closing (not hiding) windows between modes gives a real RAM
+drop that the user can feel. This is what makes the switch feel real.
+
+
+--- PROGRESS ---
+
+[DONE] Core Electron + React + Python + SQLite architecture
+[DONE] IPC stdio pipeline (Electron <-> Python)
+[DONE] Python heartbeat + monitor-status indicator in top nav
+[DONE] Task CRUD UI (create form, complete, delete buttons)
+[DONE] Three.js Orbit View (sun, rings, planet animation loop)
+[DONE] Planet click -> task details popup in Orbit View
+[DONE] Focus Mode overlay modal with message templates
+[DONE] focusModemsgs.txt parsing and injection into overlay
+[DONE] Settings page UI (all 4 panels)
+[DONE] Settings export/import via JSON file dialog
+[DONE] CSV export for time_logs
+[DONE] DuckDuckGo auto-research panel with SQLite cache
+[DONE] Mobile-responsive sidebar + hamburger menu
+[DONE] Preload.js whitelist security (contextIsolation, no nodeIntegration)
+[DONE] Python auto-restart with 3-crash backoff guard
+[PARTIAL] Task CRUD backend - DB functions correct but path bug means
+          data writes to wrong file so nothing loads in the UI
+[PARTIAL] Orbit View planets - Three.js code correct, no tasks = no planets
+[PARTIAL] Analytics page - UI done, no real SQLite data connected
+[PARTIAL] Focus overlay - trigger logic works, message render is broken
+
+
+--- NEXT STEPS (priority order) ---
+
+1. Fix DB race condition (CRITICAL - unlocks tasks + planets at once).
+   Option A (quickest): In monitor.py handleIncomingActions, buffer
+   all non-setPaths commands into a queue and drain after setPaths runs.
+   Option B (cleaner): In main.js app.whenReady, only call
+   createDashboardWindow() inside the "paths-initialized" handler,
+   ensuring Python DB is ready before React mounts.
+
+2. Fix App.jsx useEffect - remove taskList and activeTask from dep array,
+   register all IPC listeners once on mount only.
+
+3. Fix FocusModeOverlay.jsx line 78 message render bug (5 min fix).
+
+4. Implement proper window sizes + close-vs-hide mode switching.
+   Dashboard: 1280x800. Orbit: maximize(). Close dashboard on Orbit entry.
+
+5. Wire Analytics to real time_logs data from SQLite.
+   GROUP BY date for heatmap, GROUP BY app_name for usage bars,
+   COUNT DISTINCT dates for streak.
+
+6. Implement theme switching (toggle class on document.documentElement,
+   persist via saveSetting IPC call).
+
+7. Add task editing in the detail view (title, priority, target apps).
+
+8. Replace external stardust URL with local asset or Three.js Points stars.
+
+9. Production build: PyInstaller freeze + electron-builder .exe installer.
+
+================================================================================

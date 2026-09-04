@@ -106,12 +106,33 @@ def getActiveWindowDetails():
 def performWebResearch(taskId, taskTitle, taskDescription=""):
     """
     Asynchronously queries DuckDuckGo for general advice on the task.
+    Enhances search queries using user profile context (occupation) from SQLite settings.
     Saves a formatted JSON structure (Summary, Tips, Best Practices, Mistakes) to database.
     """
     writeToLog("INFO", f"Triggering web research for task: {taskTitle}")
     
-    # 1. Construct search terms
+    # 1. Construct search terms with user occupation context if available
+    userOccupation = ""
+    try:
+        conn = db.getDatabaseConnection(dbFilePath)
+        settingsMap = db.getSettings(conn)
+        conn.close()
+        userOccupation = settingsMap.get("userOccupation", "")
+    except Exception:
+        pass
+
     searchQuery = f"how to study or work on {taskTitle}"
+    if userOccupation:
+        occLower = userOccupation.lower().strip()
+        if occLower == "student":
+            searchQuery += " for students"
+        elif occLower == "professional":
+            searchQuery += " professionally"
+        elif occLower == "freelancer":
+            searchQuery += " as freelancer"
+        else:
+            searchQuery += f" for {userOccupation}"
+
     if taskDescription:
         searchQuery += f" {taskDescription}"
         
@@ -202,8 +223,13 @@ def monitorFocusLoop():
     
     writeToLog("INFO", "Foreground application monitoring thread started.")
     
+    batchLogs = []
+    lastBatchTime = time.time()
+    batchInterval = 15.0
+    
     # Run loop while focus mode is active and there is a target active task
     while focusActive and activeTask:
+        connection = None
         try:
             # Establish database connection to read settings
             connection = db.getDatabaseConnection(dbFilePath)
@@ -234,8 +260,21 @@ def monitorFocusLoop():
                 # Truncate window title to 60 characters to prevent sensitive data logging
                 truncatedTitle = windowTitle[:60] if windowTitle else ""
                 
-                # Log active check result to SQLite time logs
-                db.logTimeSpent(connection, activeTask["id"], int(checkInterval), isOnTask, appName, truncatedTitle)
+                # Append to batch
+                batchLogs.append({
+                    "task_id": activeTask["id"],
+                    "duration_seconds": int(checkInterval),
+                    "is_on_task": isOnTask,
+                    "app_name": appName,
+                    "window_title": truncatedTitle
+                })
+                
+                currentTime = time.time()
+                if currentTime - lastBatchTime >= batchInterval:
+                    if batchLogs:
+                        db.logTimeSpentBatch(connection, batchLogs)
+                        batchLogs.clear()
+                    lastBatchTime = currentTime
                 
                 # Build status update payload to send to Electron renderer
                 updatePayload = {
@@ -257,7 +296,7 @@ def monitorFocusLoop():
             writeToLog("ERROR", f"Exception in window monitor loop: {str(error)}")
             
             # Close database connection if left open
-            if 'connection' in locals() and connection:
+            if connection:
                 connection.close()
             
             # Default sleep interval on crash
@@ -265,6 +304,15 @@ def monitorFocusLoop():
             
         # Dynamic sleep throttling using checkInterval setting
         time.sleep(checkInterval)
+
+    # When focus mode ends, flush any remaining logs
+    if batchLogs:
+        try:
+            connection = db.getDatabaseConnection(dbFilePath)
+            db.logTimeSpentBatch(connection, batchLogs)
+            connection.close()
+        except Exception as error:
+            writeToLog("ERROR", f"Exception flushing batch logs: {str(error)}")
 
 
 def heartbeatThread():
@@ -289,6 +337,12 @@ def handleIncomingActions():
     """
     global activeTask, focusActive, monitorThread, soundThread, dbFilePath, logFilePath
     
+    # Reconfigure streams to unbuffered UTF-8 to prevent Windows IPC buffering locks
+    if hasattr(sys.stdin, 'reconfigure'):
+        sys.stdin.reconfigure(encoding='utf-8')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
     writeToLog("INFO", "Listening for Electron instructions on stdin...")
     
     # Process commands received from Electron stdout pipe line-by-line
@@ -326,6 +380,7 @@ def handleIncomingActions():
                 
                 writeToLog("INFO", f"Paths initialized. DB: {dbFilePath}")
                 sendToElectron("paths-initialized", {"status": "success"})
+                sendToElectron("paths-initialized-from-python", {"status": "success"})
                 
             elif action == "getAllTasks":
                 # Fetch all tasks and send to frontend
@@ -375,6 +430,21 @@ def handleIncomingActions():
                 if activeTask and activeTask["id"] == taskId:
                     focusActive = False
                     activeTask = None
+                    sendToElectron("focus-stopped", {"status": "success"})
+                    
+                tasksList = db.getAllTasks(connection)
+                sendToElectron("tasks-list", tasksList)
+                
+            elif action == "editTask":
+                taskId = int(payload.get("taskId"))
+                updates = payload.get("updates", {})
+                if updates:
+                    db.updateTask(connection, taskId, **updates)
+                    
+                # If editing the active focus task, update activeTask
+                if activeTask and activeTask["id"] == taskId:
+                    tasks = db.getAllTasks(connection)
+                    activeTask = next((t for t in tasks if t["id"] == taskId), None)
                     
                 tasksList = db.getAllTasks(connection)
                 sendToElectron("tasks-list", tasksList)
@@ -387,6 +457,7 @@ def handleIncomingActions():
                 if activeTask and activeTask["id"] == taskId:
                     focusActive = False
                     activeTask = None
+                    sendToElectron("focus-stopped", {"status": "success"})
                     
                 tasksList = db.getAllTasks(connection)
                 sendToElectron("tasks-list", tasksList)
@@ -415,7 +486,7 @@ def handleIncomingActions():
                     soundThread = threading.Thread(target=playAccountabilityBeeps, daemon=True)
                     soundThread.start()
                     
-                    sendToElectron("focus-started", {"taskId": taskId})
+                    sendToElectron("focus-started", {"taskId": taskId, "task": targetTask})
                     writeToLog("INFO", f"Focus session activated for task: {taskId}")
                 else:
                     writeToLog("WARNING", f"Focus requested for non-existent task: {taskId}")
@@ -439,6 +510,13 @@ def handleIncomingActions():
                 # Fetch settings Map
                 settingsMap = db.getSettings(connection)
                 sendToElectron("settings-map", settingsMap)
+
+            elif action == "getAnalytics":
+                dayRange = int(payload.get("dayRange", 7))
+                analytics = db.getAnalytics(connection, dayRange)
+                insights = db.getDailyInsights(connection)
+                analytics["insights"] = insights
+                sendToElectron("analytics-data", analytics)
 
             elif action == "getResearch":
                 # Fetch cached research guidelines for a task from database

@@ -1,6 +1,23 @@
+# Node & Build artifacts
 node_modules/
 dist/
+build/
+.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local SQLite Database & Logs
 orbit_tracker.db
+orbit_tracker.db-wal
+orbit_tracker.db-shm
 orbit_tracker.log
-.DS_Store
-*.local
+*.log
+
+# Antigravity artifacts
+.gemini/
+.antigravity/

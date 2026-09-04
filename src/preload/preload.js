@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const allowedActions = [
       "getAllTasks",
       "createTask",
+      "editTask",
       "completeTask",
       "deleteTask",
       "startFocus",
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "saveSetting",
       "changeMode",
       "getResearch",
+      "getAnalytics",
       "exportLogs",
       "importSettings",
       "exportSettings",
