@@ -49,7 +49,7 @@ function getStoragePaths() {
 
 /**
  * Writes or delegates a diagnostic log entry with timestamp and severity level.
- * Delegates writes to the Python subprocess if running, to preserve the single-writer pattern.
+ * Writes directly to the log file and delegates to Python if active without infinite recursion.
  */
 function writeLog(level, message) {
   // Format current ISO timestamp
@@ -58,16 +58,30 @@ function writeLog(level, message) {
   // Format log entry line with Electron tags
   const logLine = `[${timestamp}] [${level}] [Electron.Main] ${message}\n`;
 
-  // Delegate writing to Python monitor if running and stdin stream is writable
-  if (pyProcess && !pyProcess.killed && pyProcess.stdin.writable) {
-    sendActionToPython("logEntry", { level, message: `[Electron.Main] ${message}` });
-  } else {
-    // Fall back to direct file write if Python backend is not active yet
+  // Always append directly to local log file first
+  if (logFilePath) {
     try {
       fs.appendFileSync(logFilePath, logLine, "utf8");
     } catch (err) {
       console.error("Log file write failed:", err);
     }
+  }
+}
+
+
+/**
+ * Sends a structured command and payload to Python via standard input.
+ * Ensures stdout/stdin IPC channels remain unbuffered and flushed across Electron subprocesses.
+ */
+function sendActionToPython(action, payload = {}) {
+  if (pyProcess && !pyProcess.killed && pyProcess.stdin.writable) {
+    if (action !== "logEntry") {
+      writeLog("INFO", `Transmitting action '${action}' to Python backend via stdin.`);
+    }
+    const message = JSON.stringify({ action, payload }) + "\n";
+    pyProcess.stdin.write(message);
+  } else if (action !== "logEntry") {
+    writeLog("ERROR", `sendActionToPython blocked for '${action}' — process not running or stdin closed.`);
   }
 }
 
@@ -173,19 +187,7 @@ function spawnPythonSubprocess() {
 }
 
 
-/**
- * Sends a structured command and payload to Python via standard input.
- * Ensures stdout/stdin IPC channels remain unbuffered and flushed across Electron subprocesses.
- */
-function sendActionToPython(action, payload = {}) {
-  if (pyProcess && !pyProcess.killed && pyProcess.stdin.writable) {
-    writeLog("INFO", `Transmitting action '${action}' to Python backend via stdin.`);
-    const message = JSON.stringify({ action, payload }) + "\n";
-    pyProcess.stdin.write(message);
-  } else {
-    writeLog("ERROR", `sendActionToPython blocked for '${action}' — process not running or stdin closed.`);
-  }
-}
+
 
 
 /**
