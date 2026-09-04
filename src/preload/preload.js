@@ -55,7 +55,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "settings-exported",
       "focus-messages",
       "monitor-status",
-      "heartbeat"
+      "heartbeat",
+      "analytics-data"
     ];
 
     // Verify if the channel is whitelisted.

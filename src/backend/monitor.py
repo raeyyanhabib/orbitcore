@@ -358,15 +358,21 @@ def handleIncomingActions():
             payload = message.get("payload", {})
             
             writeToLog("INFO", f"Received action: {action}")
+            
+            # IMPORTANT: For setPaths, update path variables BEFORE opening the DB connection.
+            # Otherwise, the connection opens on the old default path and createTables
+            # runs on the wrong database file, leaving the real DB uninitialized.
+            if action == "setPaths":
+                dbFilePath = payload.get("dbPath", dbFilePath)
+                logFilePath = payload.get("logPath", logFilePath)
+                writeToLog("INFO", f"Paths updated — DB: {dbFilePath}, Log: {logFilePath}")
+            
+            # Open database connection using the (now-correct) dbFilePath
             connection = db.getDatabaseConnection(dbFilePath)
             
             if action == "setPaths":
-                # Initialize path variables sent from Electron AppData directories
-                dbFilePath = payload.get("dbPath", dbFilePath)
-                logFilePath = payload.get("logPath", logFilePath)
-                
                 try:
-                    # Initialize database schema
+                    # Initialize database schema on the correct database file
                     db.createTables(connection)
                     
                     # Parse retention settings for pruning old time logs
@@ -392,36 +398,45 @@ def handleIncomingActions():
                 sendToElectron("tasks-list", tasksList)
                 
             elif action == "createTask":
-                # Create a task
-                taskId = db.createNewTask(
-                    connection,
-                    title=payload.get("title"),
-                    description=payload.get("description", ""),
-                    notes=payload.get("notes", ""),
-                    priority=payload.get("priority", "Medium"),
-                    tags=payload.get("tags", "[]"),
-                    taskType=payload.get("taskType", "One-Time"),
-                    intervalDays=int(payload.get("intervalDays", 1)),
-                    targetApps=payload.get("targetApps", ""),
-                    color=payload.get("color")
-                )
-                
-                # Send updated task list
-                tasksList = db.getAllTasks(connection)
-                sendToElectron("tasks-list", tasksList)
-                
-                # Fetch app settings map to check research state
-                settingsMap = db.getSettings(connection)
-                researchEnabled = settingsMap.get("researchEnabled", "true").lower() == "true"
-                
-                # Trigger async web research thread only if enabled
-                if researchEnabled:
-                    researchThread = threading.Thread(
-                        target=performWebResearch,
-                        args=(taskId, payload.get("title"), payload.get("description", "")),
-                        daemon=True
+                # Create a new task and refresh the task list for the frontend
+                try:
+                    writeToLog("INFO", f"Creating task: {payload.get('title')} (priority={payload.get('priority')})")
+                    
+                    taskId = db.createNewTask(
+                        connection,
+                        title=payload.get("title"),
+                        description=payload.get("description", ""),
+                        notes=payload.get("notes", ""),
+                        priority=payload.get("priority", "Medium"),
+                        tags=payload.get("tags", "[]"),
+                        taskType=payload.get("taskType", "One-Time"),
+                        intervalDays=int(payload.get("intervalDays", 1)),
+                        targetApps=payload.get("targetApps", ""),
+                        color=payload.get("color")
                     )
-                    researchThread.start()
+                    
+                    writeToLog("INFO", f"Task created successfully with ID: {taskId}")
+                    
+                    # Send updated task list back to renderer
+                    tasksList = db.getAllTasks(connection)
+                    writeToLog("INFO", f"Sending updated tasks-list to Electron ({len(tasksList)} tasks)")
+                    sendToElectron("tasks-list", tasksList)
+                    
+                    # Fetch app settings map to check research state
+                    settingsMap = db.getSettings(connection)
+                    researchEnabled = settingsMap.get("researchEnabled", "true").lower() == "true"
+                    
+                    # Trigger async web research thread only if enabled
+                    if researchEnabled:
+                        researchThread = threading.Thread(
+                            target=performWebResearch,
+                            args=(taskId, payload.get("title"), payload.get("description", "")),
+                            daemon=True
+                        )
+                        researchThread.start()
+                except Exception as createError:
+                    writeToLog("ERROR", f"Failed to create task: {str(createError)}")
+                    traceback.print_exc(file=sys.stderr)
                 
             elif action == "completeTask":
                 # Mark task completed in SQLite
