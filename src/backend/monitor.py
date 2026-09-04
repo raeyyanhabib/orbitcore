@@ -365,22 +365,26 @@ def handleIncomingActions():
                 dbFilePath = payload.get("dbPath", dbFilePath)
                 logFilePath = payload.get("logPath", logFilePath)
                 
-                # Initialize database schema
-                db.createTables(connection)
-                
-                # Parse retention settings for pruning old time logs
-                settingsMap = db.getSettings(connection)
                 try:
-                    retentionDays = int(settingsMap.get("retentionDays", 90))
-                except (ValueError, TypeError):
-                    retentionDays = 90
-                
-                # Delete logs exceeding threshold
-                db.pruneOldLogs(connection, retentionDays)
-                
-                writeToLog("INFO", f"Paths initialized. DB: {dbFilePath}")
-                sendToElectron("paths-initialized", {"status": "success"})
-                sendToElectron("paths-initialized-from-python", {"status": "success"})
+                    # Initialize database schema
+                    db.createTables(connection)
+                    
+                    # Parse retention settings for pruning old time logs
+                    settingsMap = db.getSettings(connection)
+                    try:
+                        retentionDays = int(settingsMap.get("retentionDays", 90))
+                    except (ValueError, TypeError):
+                        retentionDays = 90
+                    
+                    # Delete logs exceeding threshold
+                    db.pruneOldLogs(connection, retentionDays)
+                    
+                    writeToLog("INFO", f"Database initialized successfully. DB: {dbFilePath}")
+                    sendToElectron("paths-initialized", {"status": "success"})
+                    sendToElectron("paths-initialized-from-python", {"status": "success"})
+                except Exception as error:
+                    writeToLog("ERROR", f"Failed to initialize database: {str(error)}")
+                    sendToElectron("paths-initialized", {"status": "error", "error": str(error)})
                 
             elif action == "getAllTasks":
                 # Fetch all tasks and send to frontend

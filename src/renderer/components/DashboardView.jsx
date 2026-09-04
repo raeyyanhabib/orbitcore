@@ -28,8 +28,11 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
 
   const handleCreateTask = (e) => {
     e.preventDefault();
+    console.log("🎯 handleCreateTask called");
+    console.log("Task title:", taskTitle);
+    
     if (!taskTitle.trim()) {
-      console.warn("Task title is empty");
+      console.warn("❌ Title is empty, aborting");
       return;
     }
 
@@ -49,8 +52,24 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
       notes: ""
     };
 
-    console.log("📤 Sending createTask action:", payload);
-    window.electronAPI.sendTaskAction("createTask", payload);
+    console.log("📤 About to send to IPC:", payload);
+
+    if (!window.electronAPI) {
+      console.error("❌ window.electronAPI is UNDEFINED");
+      return;
+    }
+    
+    if (!window.electronAPI.sendTaskAction) {
+      console.error("❌ sendTaskAction method is UNDEFINED");
+      return;
+    }
+
+    try {
+      window.electronAPI.sendTaskAction("createTask", payload);
+      console.log("✅ sendTaskAction executed successfully");
+    } catch (error) {
+      console.error("❌ Exception in sendTaskAction:", error);
+    }
 
     setTaskTitle("");
     setTaskPriority("Medium");

@@ -386,6 +386,8 @@ app.whenReady().then(() => {
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
 ipcMain.on("task-action", (event, { action, payload }) => {
+  writeLog("INFO", `Received task-action: ${action}`);
+
   if (action === "changeMode") {
     const targetMode = payload.mode;
     writeLog("INFO", `Mode transition requested: ${targetMode}`);
