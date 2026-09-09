@@ -2,7 +2,7 @@
 // Core Electron main process.
 // Spawns Python backend, pipes standard streams, and manages window lifecycles.
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -316,10 +316,20 @@ function createDashboardWindow() {
 
 
 /**
- * Creates the transparent, frameless Orbit Solar overlay window.
+ * Creates the transparent, frameless Orbit Solar mini-widget window.
  */
 function createOrbitWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
+
+  const widgetWidth = 280;
+  const widgetHeight = 330;
+
   orbitWindow = new BrowserWindow({
+    width: widgetWidth,
+    height: widgetHeight,
+    x: workX + workWidth - widgetWidth - 24,
+    y: workY + workHeight - widgetHeight - 24,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -332,6 +342,8 @@ function createOrbitWindow() {
     }
   });
 
+  orbitWindow.setOpacity(0.75);
+
   const isDev = !app.isPackaged;
 
   if (isDev) {
@@ -339,8 +351,6 @@ function createOrbitWindow() {
   } else {
     orbitWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
-
-  orbitWindow.maximize();
 
   // Attach navigation guard to Orbit window
   attachNavigationGuard(orbitWindow);
@@ -475,6 +485,27 @@ ipcMain.on("task-action", (event, { action, payload }) => {
         writeLog("ERROR", `Failed to import settings: ${e.message}`);
         event.sender.send("settings-imported", { success: false, error: e.message });
       }
+    }
+
+  } else if (action === "toggle-orbit-hover") {
+    if (orbitWindow && !orbitWindow.isDestroyed()) {
+      const currentState = orbitWindow.isAlwaysOnTop();
+      const nextState = !currentState;
+      orbitWindow.setAlwaysOnTop(nextState);
+      writeLog("INFO", `Toggled orbit window hover state to: ${nextState}`);
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        dashboardWindow.webContents.send("orbit-hover-status", { alwaysOnTop: nextState });
+      }
+      if (orbitWindow && !orbitWindow.isDestroyed()) {
+        orbitWindow.webContents.send("orbit-hover-status", { alwaysOnTop: nextState });
+      }
+    }
+
+  } else if (action === "set-orbit-opacity") {
+    if (orbitWindow && !orbitWindow.isDestroyed()) {
+      const opacity = parseFloat(payload.opacity) || 0.75;
+      orbitWindow.setOpacity(opacity);
+      writeLog("INFO", `Set orbit window opacity to: ${opacity}`);
     }
 
   } else {

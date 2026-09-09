@@ -134,12 +134,12 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #2d3449;
+    background: var(--surface-container-highest);
     border-radius: 3px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #6bd8cb;
+    background: var(--primary);
   }
 
   .glass-panel {
@@ -147,6 +147,14 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .orbit-widget-glass {
+    background: rgba(11, 19, 38, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   }
 
   .btn-hover-lift {

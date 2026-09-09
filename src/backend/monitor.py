@@ -412,7 +412,8 @@ def handleIncomingActions():
                         taskType=payload.get("taskType", "One-Time"),
                         intervalDays=int(payload.get("intervalDays", 1)),
                         targetApps=payload.get("targetApps", ""),
-                        color=payload.get("color")
+                        color=payload.get("color"),
+                        deadline=payload.get("deadline")
                     )
                     
                     writeToLog("INFO", f"Task created successfully with ID: {taskId}")
@@ -595,12 +596,74 @@ def handleIncomingActions():
             traceback.print_exc(file=sys.stderr)
 
 
+def deadlineReminderThread():
+    """
+    Background daemon thread checking upcoming task deadlines and sending TickTick-style random reminders.
+    """
+    writeToLog("INFO", "Deadline & random reminder thread started.")
+    lastRandomNudge = time.time()
+    
+    while True:
+        try:
+            if dbFilePath and os.path.exists(dbFilePath):
+                conn = db.getDatabaseConnection(dbFilePath)
+                upcoming = db.getUpcomingDeadlines(conn, minutesAhead=60)
+                
+                now = datetime.now()
+                for t in upcoming:
+                    dl_str = t.get("deadline")
+                    if dl_str:
+                        try:
+                            # Clean ISO format if needed
+                            clean_dl = dl_str.replace("Z", "")
+                            dl_dt = datetime.fromisoformat(clean_dl)
+                            diff_mins = int((dl_dt - now).total_seconds() / 60)
+                            if diff_mins <= 60:
+                                sendToElectron("deadline-reminder", {
+                                    "taskId": t["id"],
+                                    "title": t["title"],
+                                    "deadline": dl_str,
+                                    "minutesLeft": diff_mins,
+                                    "isOverdue": diff_mins < 0
+                                })
+                        except Exception:
+                            pass
+                conn.close()
+                
+            # Random motivational nudge every 20-40 minutes if focus is active
+            now_time = time.time()
+            nudge_interval = random.randint(1200, 2400)
+            if focusActive and activeTask and (now_time - lastRandomNudge > nudge_interval):
+                lastRandomNudge = now_time
+                sendToElectron("deadline-reminder", {
+                    "taskId": activeTask["id"],
+                    "title": activeTask["title"],
+                    "deadline": None,
+                    "minutesLeft": None,
+                    "isRandomNudge": True,
+                    "nudgeMessage": f"Keep going! Focus session on '{activeTask['title']}' is active."
+                })
+                if win32Installed:
+                    try:
+                        winsound.Beep(900, 150)
+                    except Exception:
+                        pass
+        except Exception as err:
+            writeToLog("WARNING", f"Deadline thread error: {str(err)}")
+            
+        time.sleep(45)
+
+
 if __name__ == "__main__":
     writeToLog("INFO", "Orbit monitor subprocess initialized.")
     
     # Spawn heartbeat daemon thread to send status check updates
     hThread = threading.Thread(target=heartbeatThread, daemon=True)
     hThread.start()
+
+    # Spawn deadline reminder thread
+    dThread = threading.Thread(target=deadlineReminderThread, daemon=True)
+    dThread.start()
     
     try:
         # Enter loop processing stdin commands from Electron

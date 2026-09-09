@@ -129,6 +129,16 @@ export default function App() {
       setAnalyticsData(data);
     });
 
+    window.electronAPI.onReceiveFromMain("deadline-reminder", (data) => {
+      if (data.isRandomNudge) {
+        triggerToast("success", `💡 ${data.nudgeMessage}`);
+      } else if (data.isOverdue) {
+        triggerToast("error", `🔴 Task Overdue: "${data.title}" was due!`);
+      } else {
+        triggerToast("error", `⏰ Deadline Warning: "${data.title}" due in ${data.minutesLeft}m!`);
+      }
+    });
+
     window.electronAPI.sendTaskAction("getAllTasks");
     window.electronAPI.sendTaskAction("getSettings");
     window.electronAPI.sendTaskAction("getFocusMessages");

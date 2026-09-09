@@ -26,7 +26,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "exportLogs",
       "importSettings",
       "exportSettings",
-      "getFocusMessages"
+      "getFocusMessages",
+      "toggle-orbit-hover",
+      "set-orbit-opacity"
     ];
 
     // Check if the requested action is present in the whitelisted allowedActions array.
@@ -56,7 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "focus-messages",
       "monitor-status",
       "heartbeat",
-      "analytics-data"
+      "analytics-data",
+      "deadline-reminder"
     ];
 
     // Verify if the channel is whitelisted.

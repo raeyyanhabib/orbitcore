@@ -20,13 +20,62 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
     window.electronAPI.sendTaskAction("importSettings");
   };
 
+  const handleOpacityChange = (val) => {
+    updateSetting("orbitOpacity", val);
+    window.electronAPI.sendTaskAction("set-orbit-opacity", { opacity: val });
+  };
+
   return (
-    <div className="w-full h-full pb-8">
+    <div className="w-full h-full pb-12 overflow-y-auto max-h-[calc(100vh-100px)] custom-scrollbar pr-2">
       {/* Title */}
       <h2 className="text-headline-lg font-headline-lg font-bold text-on-surface mb-2 mt-4 tracking-tight">Settings</h2>
       <p className="text-body-md font-body-md text-on-surface-variant mb-section-gap">Customize your tracking and app preferences.</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter max-w-7xl">
+        
+        {/* Orbit Widget Preferences */}
+        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group lg:col-span-2">
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
+          
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-primary">public</span>
+            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Orbit Widget Preferences</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+              <div>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Widget Opacity</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Adjust translucency of the mini desktop widget ({Math.round((localSettings.orbitOpacity || 0.75) * 100)}%).</p>
+              </div>
+              <input 
+                type="range"
+                min="0.4"
+                max="0.95"
+                step="0.05"
+                className="w-32 accent-primary cursor-pointer"
+                value={localSettings.orbitOpacity || 0.75}
+                onChange={(e) => handleOpacityChange(e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+              <div>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Always On Top (Hover Mode)</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Default state when switching to Orbit Mode.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer" 
+                  checked={localSettings.orbitHoverDefault !== "false"} 
+                  onChange={(e) => updateSetting("orbitHoverDefault", e.target.checked ? "true" : "false")} 
+                />
+                <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+          </div>
+        </div>
         
         {/* User Profile panel */}
         <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">

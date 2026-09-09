@@ -55,11 +55,18 @@ def createTables(connection):
             interval_days INTEGER DEFAULT 1, -- Cycles for recurring tasks
             target_apps TEXT,              -- Comma-separated process names: "code.exe,chrome.exe"
             color TEXT,                    -- Hex code representation: "#FF0000"
+            deadline DATETIME,             -- Target deadline: "2026-09-10T14:30"
             is_completed INTEGER DEFAULT 0, -- 0 = active, 1 = completed
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             completed_at DATETIME
         );
     """)
+
+    # Check if deadline column exists in case DB was created before deadline feature
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN deadline DATETIME DEFAULT NULL;")
+    except Exception:
+        pass  # Column already exists
 
     # 2. Create Time Logs table storing 3-second active foreground window focus metrics.
     cursor.execute("""
@@ -175,7 +182,7 @@ def exportLogsToCSV(connection, csvFilePath):
             ])
 
 
-def createNewTask(connection, title, description="", notes="", priority="Medium", tags="[]", taskType="One-Time", intervalDays=1, targetApps="", color=None):
+def createNewTask(connection, title, description="", notes="", priority="Medium", tags="[]", taskType="One-Time", intervalDays=1, targetApps="", color=None, deadline=None):
     """
     Performs server-side title validation and inserts a new task row into SQLite.
     """
@@ -199,15 +206,30 @@ def createNewTask(connection, title, description="", notes="", priority="Medium"
     # Execute parameterized INSERT statement to prevent SQL injection.
     cursor.execute("""
         INSERT INTO tasks (
-            title, description, notes, priority, tags, type, interval_days, target_apps, color, is_completed
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    """, (title, description, notes, priority, tags, taskType, intervalDays, targetApps, color))
+            title, description, notes, priority, tags, type, interval_days, target_apps, color, deadline, is_completed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    """, (title, description, notes, priority, tags, taskType, intervalDays, targetApps, color, deadline))
     
     # Commit insertion changes to SQLite
     connection.commit()
     
     # Return auto-incremented primary key value of the new task row
     return cursor.lastrowid
+
+
+def getUpcomingDeadlines(connection, minutesAhead=60):
+    """
+    Returns non-completed tasks whose deadlines fall within the specified minutes window or are overdue.
+    """
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT * FROM tasks
+        WHERE is_completed = 0
+          AND deadline IS NOT NULL
+          AND deadline != ''
+    """)
+    rows = cursor.fetchall()
+    return [dict(r) for r in rows]
 
 
 def getAllTasks(connection):

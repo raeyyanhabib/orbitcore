@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import CollapsiblePanel from './CollapsiblePanel';
 
 export default function DashboardView({ taskList, activeTask, isFocusActive, monitorUpdate, focusMessages, analyticsData }) {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskType, setTaskType] = useState("One-Time");
   const [taskPriority, setTaskPriority] = useState("Medium");
+  const [taskDeadline, setTaskDeadline] = useState("");
   const [selectedTask, setSelectedTask] = useState(null); // For Task Details view
   const [researchTips, setResearchTips] = useState(null);
   
@@ -28,11 +30,8 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
 
   const handleCreateTask = (e) => {
     e.preventDefault();
-    console.log("🎯 handleCreateTask called");
-    console.log("Task title:", taskTitle);
     
     if (!taskTitle.trim()) {
-      console.warn("❌ Title is empty, aborting");
       return;
     }
 
@@ -49,31 +48,22 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
       color: color,
       intervalDays: 1,
       tags: "[]",
-      notes: ""
+      notes: "",
+      deadline: taskDeadline || null
     };
 
-    console.log("📤 About to send to IPC:", payload);
-
-    if (!window.electronAPI) {
-      console.error("❌ window.electronAPI is UNDEFINED");
-      return;
-    }
-    
-    if (!window.electronAPI.sendTaskAction) {
-      console.error("❌ sendTaskAction method is UNDEFINED");
-      return;
-    }
-
-    try {
-      window.electronAPI.sendTaskAction("createTask", payload);
-      console.log("✅ sendTaskAction executed successfully");
-    } catch (error) {
-      console.error("❌ Exception in sendTaskAction:", error);
+    if (window.electronAPI && window.electronAPI.sendTaskAction) {
+      try {
+        window.electronAPI.sendTaskAction("createTask", payload);
+      } catch (error) {
+        console.error("Failed to send createTask IPC:", error);
+      }
     }
 
     setTaskTitle("");
     setTaskPriority("Medium");
     setTaskType("One-Time");
+    setTaskDeadline("");
   };
 
   const handleCompleteTask = (taskId) => {
@@ -283,6 +273,28 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
     );
   }
 
+  // Helper function for deadline badges
+  const renderDeadlineBadge = (deadlineStr) => {
+    if (!deadlineStr) return null;
+    try {
+      const dl = new Date(deadlineStr);
+      const now = new Date();
+      const diffMs = dl - now;
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      
+      if (diffMs < 0) {
+        return <span className="text-[10px] bg-error/20 text-error px-2 py-0.5 rounded font-bold uppercase">Overdue!</span>;
+      }
+      if (diffHours < 24) {
+        return <span className="text-[10px] bg-secondary/20 text-secondary px-2 py-0.5 rounded font-bold uppercase">Due in {diffHours}h</span>;
+      }
+      const diffDays = Math.round(diffHours / 24);
+      return <span className="text-[10px] bg-tertiary/20 text-tertiary px-2 py-0.5 rounded font-bold uppercase">Due in {diffDays}d</span>;
+    } catch (e) {
+      return null;
+    }
+  };
+
   // Dashboard View Main
   return (
     <div className="w-full h-full pb-8">
@@ -295,96 +307,129 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter auto-rows-max max-w-7xl">
         <div className="lg:col-span-2 flex flex-col gap-gutter">
           
-          {/* Create Task Form */}
-          <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding relative overflow-hidden group focus-within:border-primary/50 transition-colors">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full group-focus-within:bg-primary/10 transition-colors pointer-events-none"></div>
-            
-            <form onSubmit={(e) => { console.log("Submit button clicked"); handleCreateTask(e); }} className="relative z-10 flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
+          {/* Create Task Form Panel */}
+          <CollapsiblePanel title="Create Task" icon="add_circle">
+            <form onSubmit={handleCreateTask} className="space-y-4">
+              {/* Row 1: Full-width Task Title */}
+              <div>
                 <input 
                   type="text" 
                   placeholder="What are you working on?..." 
                   className="w-full bg-surface border border-outline/20 text-on-surface font-body-md rounded-xl px-4 py-3 focus:outline-none focus:border-primary transition-colors placeholder:text-on-surface-variant/50"
                   value={taskTitle}
-                  onChange={(e) => {
-                    console.log("Title input:", e.target.value);
-                    setTaskTitle(e.target.value);
-                  }}
+                  onChange={(e) => setTaskTitle(e.target.value)}
                   required
                 />
               </div>
-              <div className="flex gap-2">
-                <select 
-                  className="bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-3 focus:outline-none focus:border-primary transition-colors cursor-pointer"
-                  value={taskPriority}
-                  onChange={(e) => setTaskPriority(e.target.value)}
-                >
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-                <select 
-                  className="bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-3 focus:outline-none focus:border-primary transition-colors cursor-pointer hidden sm:block"
-                  value={taskType}
-                  onChange={(e) => setTaskType(e.target.value)}
-                >
-                  <option value="One-Time">One-Time</option>
-                  <option value="Daily">Daily</option>
-                  <option value="Recurring">Recurring</option>
-                </select>
-                <button 
-                  type="submit" 
-                  className="bg-primary hover:bg-primary-fixed text-on-primary rounded-xl px-5 py-3 font-label-md font-bold transition-all cursor-pointer active:scale-95 shadow-md flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[20px]">add</span>
-                  <span className="hidden sm:inline">Add Task</span>
-                </button>
+
+              {/* Row 2: Deadline, Priority, Type, and Submit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+                <div>
+                  <input 
+                    type="datetime-local" 
+                    title="Task Deadline"
+                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
+                    value={taskDeadline}
+                    onChange={(e) => setTaskDeadline(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <select 
+                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
+                    value={taskPriority}
+                    onChange={(e) => setTaskPriority(e.target.value)}
+                  >
+                    <option value="High">Priority: High</option>
+                    <option value="Medium">Priority: Medium</option>
+                    <option value="Low">Priority: Low</option>
+                  </select>
+                </div>
+                <div>
+                  <select 
+                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
+                    value={taskType}
+                    onChange={(e) => setTaskType(e.target.value)}
+                  >
+                    <option value="One-Time">Type: One-Time</option>
+                    <option value="Daily">Type: Daily</option>
+                    <option value="Recurring">Type: Recurring</option>
+                  </select>
+                </div>
+                <div>
+                  <button 
+                    type="submit" 
+                    className="w-full bg-primary hover:bg-primary-fixed text-on-primary rounded-xl px-4 py-2.5 font-label-md font-bold transition-all cursor-pointer active:scale-95 shadow-md flex items-center justify-center gap-1 text-sm"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    <span>Add Task</span>
+                  </button>
+                </div>
               </div>
             </form>
-          </div>
+          </CollapsiblePanel>
 
-          {/* Task List */}
-          <div className="bg-surface-container rounded-2xl border border-outline/20 overflow-hidden flex flex-col max-h-[500px]">
-            <div className="p-4 border-b border-outline/20 flex justify-between items-center bg-surface-container/50">
-              <h3 className="text-label-md font-bold text-on-surface uppercase tracking-wider">Active Tasks</h3>
-              <span className="text-label-sm bg-surface px-2 py-1 rounded-md text-on-surface-variant border border-outline/20">{taskList.filter(t => !t.is_completed).length} Tasks</span>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+          {/* Task List Panel */}
+          <CollapsiblePanel title="Active Tasks" icon="task_alt" badge={taskList.filter(t => !t.is_completed).length}>
+            <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[450px]">
               {taskList.filter(t => !t.is_completed).length === 0 ? (
                 <div className="w-full h-full flex flex-col items-center justify-center text-on-surface-variant p-8">
-                  <span className="material-symbols-outlined text-4xl mb-4 opacity-50">done_all</span>
+                  <span className="material-symbols-outlined text-4xl mb-3 opacity-50">done_all</span>
                   <p className="text-body-md text-center">No active tasks. Add a task above to start tracking.</p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2.5">
                   {taskList.filter(t => !t.is_completed).map((task) => {
                     const isActive = activeTask && activeTask.id === task.id;
                     return (
                       <div 
                         key={task.id} 
                         onClick={() => openTaskDetails(task)}
-                        className={`group bg-surface hover:bg-surface-variant border border-outline/20 rounded-xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all hover:scale-[1.01] ${isActive ? 'ring-1 ring-primary shadow-[0_0_15px_rgba(107,216,203,0.15)]' : ''}`}
+                        className={`group bg-surface hover:bg-surface-variant border border-outline/20 rounded-xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${isActive ? 'ring-1 ring-primary shadow-[0_0_15px_rgba(107,216,203,0.15)]' : ''}`}
                       >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-3 h-3 rounded-full ${isActive ? 'bg-primary animate-pulse shadow-[0_0_10px_rgba(107,216,203,0.8)]' : 'bg-surface-variant border border-outline/20 group-hover:bg-primary/50'}`}></div>
-                          <div className="flex flex-col">
-                            <span className={`text-body-md font-semibold transition-colors ${isActive ? 'text-primary' : 'text-on-surface group-hover:text-primary-fixed-dim'}`}>{task.title}</span>
-                            <div className="flex gap-2 mt-1">
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-4">
+                          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isActive ? 'bg-primary animate-pulse shadow-[0_0_10px_rgba(107,216,203,0.8)]' : 'bg-surface-variant border border-outline/20 group-hover:bg-primary/50'}`}></div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className={`text-body-md font-semibold truncate transition-colors ${isActive ? 'text-primary' : 'text-on-surface group-hover:text-primary-fixed-dim'}`}>
+                              {task.title}
+                            </span>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider">{task.priority}</span>
                               <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider flex items-center gap-1">
                                 <span className="w-1 h-1 rounded-full bg-on-surface-variant/40"></span> {task.type}
                               </span>
+                              {renderDeadlineBadge(task.deadline)}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          {isActive && <span className="text-[10px] bg-primary/20 text-primary px-2 py-1 rounded-md uppercase font-bold tracking-widest animate-pulse">Tracking</span>}
+
+                        {/* Action Buttons: Visible or Hover-revealed */}
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          {isActive ? (
+                            <>
+                              <span className="text-[10px] bg-primary/20 text-primary px-2 py-1 rounded-md uppercase font-bold tracking-widest animate-pulse hidden sm:inline-block">Tracking</span>
+                              <button 
+                                onClick={stopFocus}
+                                title="Stop Focus Session"
+                                className="bg-error/20 hover:bg-error text-error hover:text-on-error p-2 rounded-lg transition-all cursor-pointer active:scale-95 flex items-center"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">stop</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button 
+                              onClick={() => startFocus(task.id)}
+                              title="Start Focus Session"
+                              className="bg-primary/10 hover:bg-primary text-primary hover:text-on-primary p-2 rounded-lg transition-all opacity-80 group-hover:opacity-100 cursor-pointer active:scale-95 flex items-center"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
+                            </button>
+                          )}
                           <button 
-                            onClick={(e) => { e.stopPropagation(); handleCompleteTask(task.id); }}
-                            className="text-on-surface-variant hover:text-tertiary p-2 rounded-lg hover:bg-tertiary/10 transition-colors cursor-pointer active:scale-90"
+                            onClick={() => handleCompleteTask(task.id)}
+                            title="Mark as Complete"
+                            className="bg-tertiary/10 hover:bg-tertiary text-tertiary hover:text-on-tertiary-fixed p-2 rounded-lg transition-all opacity-80 group-hover:opacity-100 cursor-pointer active:scale-95 flex items-center"
                           >
-                            <span className="material-symbols-outlined">check_circle</span>
+                            <span className="material-symbols-outlined text-[18px]">check</span>
                           </button>
                         </div>
                       </div>
@@ -393,70 +438,50 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                 </div>
               )}
             </div>
-          </div>
+          </CollapsiblePanel>
         </div>
 
-        {/* Daily Insights Widget */}
+        {/* Daily Insights Panel */}
         <div className="flex flex-col gap-gutter">
-          <div className="bg-surface-container rounded-2xl border border-white/5 p-card-padding flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-bl-full group-hover:bg-secondary/10 transition-colors pointer-events-none"></div>
-            
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-headline-md font-headline-md font-semibold text-on-surface flex items-center gap-2">
-                  <span className="material-symbols-outlined text-secondary">lightbulb</span> Daily Insights
-                </h3>
+          <CollapsiblePanel title="Daily Insights" icon="lightbulb">
+            <div className="flex flex-col gap-4">
+              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-secondary mt-0.5">trending_up</span>
+                <div>
+                  <p className="text-label-md font-bold text-on-surface">Peak Focus Time</p>
+                  <p className="text-body-sm text-on-surface-variant mt-1">
+                    {analyticsData?.insights?.peakHour != null 
+                      ? `You are most productive around ${analyticsData.insights.peakHour}:00. Schedule complex missions then.` 
+                      : 'Not enough data to determine peak focus time.'}
+                  </p>
+                </div>
               </div>
               
-              <div className="flex flex-col gap-4">
-                <div className="bg-surface p-4 rounded-xl border border-white/5 flex gap-3">
-                  <span className="material-symbols-outlined text-secondary mt-0.5">trending_up</span>
-                  <div>
-                    <p className="text-label-md font-bold text-on-surface">Peak Focus Time</p>
-                    <p className="text-body-sm text-on-surface-variant mt-1">
-                      {analyticsData?.insights?.peakHour != null 
-                        ? `You are most productive around ${analyticsData.insights.peakHour}:00. Schedule complex missions then.` 
-                        : 'Not enough data to determine peak focus time.'}
-                    </p>
-                  </div>
+              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-primary mt-0.5">info</span>
+                <div>
+                  <p className="text-label-md font-bold text-on-surface">Top Mission</p>
+                  <p className="text-body-sm text-on-surface-variant mt-1">
+                    {analyticsData?.insights?.topTask && analyticsData.insights.topTask !== 'None'
+                      ? `You've spent the most time on "${analyticsData.insights.topTask}" today.`
+                      : `No missions focused on yet today.`}
+                  </p>
                 </div>
-                
-                <div className="bg-surface p-4 rounded-xl border border-white/5 flex gap-3">
-                  <span className="material-symbols-outlined text-primary mt-0.5">info</span>
-                  <div>
-                    <p className="text-label-md font-bold text-on-surface">Top Mission</p>
-                    <p className="text-body-sm text-on-surface-variant mt-1">
-                      {analyticsData?.insights?.topTask && analyticsData.insights.topTask !== 'None'
-                        ? `You've spent the most time on "${analyticsData.insights.topTask}" today.`
-                        : `No missions focused on yet today.`}
-                    </p>
-                  </div>
-                </div>
+              </div>
 
-                <div className="bg-surface p-4 rounded-xl border border-white/5 flex gap-3">
-                  <span className="material-symbols-outlined text-error mt-0.5">warning</span>
-                  <div>
-                    <p className="text-label-md font-bold text-on-surface">Distractions</p>
-                    <p className="text-body-sm text-on-surface-variant mt-1">
-                      {analyticsData?.insights?.distractionCount != null
-                        ? `You've drifted off-task ${analyticsData.insights.distractionCount} times today.`
-                        : `No distractions detected yet.`}
-                    </p>
-                  </div>
+              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-error mt-0.5">warning</span>
+                <div>
+                  <p className="text-label-md font-bold text-on-surface">Distractions</p>
+                  <p className="text-body-sm text-on-surface-variant mt-1">
+                    {analyticsData?.insights?.distractionCount != null
+                      ? `You've drifted off-task ${analyticsData.insights.distractionCount} times today.`
+                      : `No distractions detected yet.`}
+                  </p>
                 </div>
               </div>
             </div>
-            
-            <div className="mt-6 pt-4 border-t border-white/5 flex justify-center">
-              {/* Decorative SVG */}
-              <svg width="120" height="40" viewBox="0 0 120 40" className="opacity-30">
-                <path d="M0,20 Q15,5 30,20 T60,20 T90,20 T120,20" fill="none" stroke="#ec6a06" strokeWidth="2" strokeDasharray="4 2" />
-                <circle cx="30" cy="20" r="3" fill="#ec6a06" />
-                <circle cx="60" cy="20" r="4" fill="#ec6a06" className="animate-pulse" />
-                <circle cx="90" cy="20" r="3" fill="#ec6a06" />
-              </svg>
-            </div>
-          </div>
+          </CollapsiblePanel>
         </div>
       </div>
     </div>
