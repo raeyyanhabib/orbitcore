@@ -169,11 +169,6 @@ export default function App() {
       <div className="relative w-screen h-screen bg-transparent overflow-hidden">
         <OrbitView 
           taskList={taskList}
-          activeTask={activeTask}
-          monitorUpdate={monitorUpdate}
-          isFocusActive={isFocusActive}
-          focusMessages={focusMessages}
-          settings={settings}
           onBackToDashboard={() => handleModeTransition("dashboard")}
         />
         {toast.show && (
