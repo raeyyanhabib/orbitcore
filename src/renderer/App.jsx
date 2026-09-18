@@ -9,7 +9,8 @@ import SettingsView from "./components/SettingsView.jsx";
 import FirstRunModal from "./components/FirstRunModal.jsx";
 
 export default function App() {
-  const [currentMode, setCurrentMode] = useState("dashboard"); // 'dashboard' | 'orbit'
+  const initialMode = window.location.hash === "#orbit" ? "orbit" : "dashboard";
+  const [currentMode, setCurrentMode] = useState(initialMode); // 'dashboard' | 'orbit'
   const [activeTab, setActiveTab] = useState("tasks"); // 'tasks' | 'analytics' | 'settings'
   const [taskList, setTaskList] = useState([]);
   const [activeTask, setActiveTask] = useState(null);

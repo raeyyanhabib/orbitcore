@@ -197,18 +197,26 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
       {/* 3D Canvas */}
       <div ref={mountRef} className="w-full h-full absolute inset-0 z-0" />
 
-      {/* EXIT BAR - Minimal top bar with just back button */}
-      <div className="absolute top-0 left-0 right-0 z-20 h-12 flex items-center px-4 bg-background/30 backdrop-blur-sm border-b border-white/5">
-        <button 
-          onClick={onBackToDashboard}
-          className="flex items-center gap-2 px-3 py-1.5 text-on-surface hover:text-primary transition-colors group cursor-pointer"
-          title="Exit Orbit Mode"
-        >
-          <span className="material-symbols-outlined text-lg group-hover:-translate-x-0.5 transition-transform">
-            arrow_back
-          </span>
-          <span className="text-label-sm font-semibold">Exit</span>
-        </button>
+      {/* EXIT BAR - High visibility drag bar with prominent Exit button */}
+      <div 
+        style={{ WebkitAppRegion: 'drag' }}
+        className="absolute top-0 left-0 right-0 z-50 h-11 flex items-center justify-between px-3 bg-surface-container/85 backdrop-blur-md border-b border-outline/20 select-none shadow-md"
+      >
+        <div style={{ WebkitAppRegion: 'no-drag' }} className="flex items-center">
+          <button 
+            onClick={onBackToDashboard}
+            className="flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-primary-fixed text-on-primary rounded-lg transition-all font-bold cursor-pointer active:scale-95 shadow-sm text-xs"
+            title="Exit Orbit Mode to Console"
+          >
+            <span className="material-symbols-outlined text-sm">arrow_back</span>
+            <span className="font-bold uppercase tracking-wider text-[11px]">Exit Orbit</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5 opacity-60 text-on-surface">
+          <span className="material-symbols-outlined text-xs">drag_pan</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest font-semibold">Orbit Mode</span>
+        </div>
       </div>
 
     </div>

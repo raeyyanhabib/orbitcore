@@ -347,9 +347,9 @@ function createOrbitWindow() {
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    orbitWindow.loadURL("http://localhost:5173");
+    orbitWindow.loadURL("http://localhost:5173#orbit");
   } else {
-    orbitWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+    orbitWindow.loadFile(path.join(__dirname, "../../dist/index.html"), { hash: "orbit" });
   }
 
   // Attach navigation guard to Orbit window
