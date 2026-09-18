@@ -34,7 +34,7 @@ IMPLEMENTATION NOTES:
                                  PLAYFUL NUDGES
 ================================================================================
 
-9. "Task focus energy: **ON** | [APP_NAME] browsing: **DETECTED**"
+9. "Task focus energy: ON | [APP_NAME] browsing: DETECTED"
 
 10. "Your task didn't distract itself! 👋"
 
@@ -62,6 +62,12 @@ IMPLEMENTATION NOTES:
 
 20. "The clock is ticking and [TASK_NAME] is still waiting..."
 
+21. "Your future self is watching you browse [APP_NAME] right now... 😳"
+
+22. "Focus check! 100% focused on [TASK_NAME], or 100% distracted by [APP_NAME]?"
+
+23. "Friendly nudge: [TASK_NAME] isn't going to finish itself!"
+
 ================================================================================
                            TEMPLATE INSTRUCTIONS
 ================================================================================
@@ -77,7 +83,7 @@ Example format:
 [NUMBER]. "Message text with [TASK_NAME] placeholder or [APP_NAME]"
 
 ================================================================================
-                              USAGE IN FOCUS MODE
+                               USAGE IN FOCUS MODE
 ================================================================================
 
 When triggered:
@@ -89,8 +95,6 @@ When triggered:
 
 ================================================================================
 
-Total messages available: 20+
+Total messages available: 23+
 Recommended minimum: 15
-Last updated: 2026-05-27
-
-User can customize this file and restart app to load new messages.
+Last updated: 2026-09-18

@@ -1,87 +1,129 @@
-<<<<<<< HEAD
-📋 Executive Summary
-
-Orbit Task Tracker is a desktop productivity application that combines intelligent task management with an engaging visual interface. The app operates in two distinct modes: a comprehensive Dashboard Mode for deep task management and configuration, and a minimalist Orbit Mode that transforms your desktop into an interactive solar system visualization where tasks are represented as orbiting planets.
-
-Key Innovation: By converting tasks into a dynamic, visual solar system, Orbit Task Tracker makes productivity visible and engaging while maintaining minimal system footprint. The app monitors your active applications in real-time to track whether you're working on-task or getting distracted, providing intelligent reminders and detailed time analytics.
-
-Target Market: Students, professionals, and productivity-focused individuals who want a visually engaging, data-driven task management experience with intelligent app monitoring.
-
-Primary Success Metric: Achieve 30% improvement in on-task time and 25% task completion rate increase for beta users within 8 weeks of adoption.
-
-
-🎯 Product Vision & Goals
-
-Vision Statement
-
-"Make productivity visible, engaging, and automatic—turning your task list into a living, breathing universe that keeps you accountable while staying beautifully out of the way."
-
-Strategic Goals
-
-
-Engagement: Create a productivity app that users want to look at, not one they avoid
-Accountability: Provide real-time, data-driven insights into where time is actually being spent
-Simplicity: Remove friction from task creation and management through intelligent automation
-Integration: Seamlessly blend desktop-level app monitoring with personalized task workflows
-Performance: Maintain minimal system resource usage even in always-on Orbit Mode
-=======
 # Orbit Core - Task Tracker 🌌
 
-**Orbit Task Tracker** is a desktop productivity application that combines intelligent task management with an engaging visual interface. By converting tasks into a dynamic, visual solar system, Orbit Task Tracker makes productivity visible and engaging while maintaining a minimal system footprint. 
+**Orbit Task Tracker** is a desktop productivity application that combines intelligent task management with an engaging visual solar system interface and automatic application activity monitoring.
 
 The app operates in two distinct modes:
-1. **Dashboard Mode**: A comprehensive interface for deep task management and configuration.
-2. **Orbit Mode**: A minimalist, always-on visual representation of your tasks as an interactive solar system.
+1. **Dashboard Mode**: A comprehensive 1280x800 desktop console for task creation, deadline management, research tips, analytics, and settings.
+2. **Orbit Mode**: An ultra-minimalist, 30 FPS translucent desktop widget where active tasks orbit a central sun as colorful planets.
 
-## ✨ Core Features
-- **Task Management System:** Manage One-Time, Daily, and Recurring tasks.
-- **Intelligent Focus Mode:** App monitoring to ensure you stay on track and get notified if you switch to distracting applications.
-- **Web Research Tips:** Automatically fetches advice and best practices for your tasks using DuckDuckGo.
-- **Solar System Visualization:** Tasks orbit a central sun, representing priority by distance and engagement level by speed.
-- **Time Analytics:** Detailed time tracking with productivity heatmaps and app usage statistics.
-- **Data Privacy:** Local-first SQLite database. No data leaves your machine.
+---
 
-## 🚀 Quick Setup
+## ✨ Key Features
+
+- 🚀 **Dual Window Architecture**: Switch seamlessly between standard Dashboard mode and a translucent Orbit widget docked to your desktop.
+- 🪐 **Interactive 3D Solar System**: Tasks rendered as orbiting planets with size and speed scaled by priority.
+- 🎯 **Intelligent Focus Monitoring**: Real-time foreground app tracking with playful distraction alerts (`FocusModeOverlay`) when accessing unapproved applications.
+- ⏰ **Deadline & Reminders System**:
+  - Task due-date picker with urgency badges (`Overdue!`, `Due in 3h`).
+  - Side notification system (`RemindersOverlay`) delivering motivational reminders based on INT8 timer ticks.
+- 📊 **30-Day Productivity Heatmap & Analytics**: Real-time focus logging with daily heatmap tooltips, top tasks breakdown, and On-Task vs. Off-Task ratio bars.
+- 🔍 **Automated Web Research**: Queries DuckDuckGo for best practices tailored to your task and user profile.
+- 🔒 **Data Privacy**: Local-first SQLite database with Write-Ahead Logging (WAL). Export logs to CSV or backup settings to JSON anytime.
+
+---
+
+## 🛠️ Step-by-Step Setup & Developer Guide
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- Python (v3.10 or higher) with `pip`
 
-### Launching the Application
-Orbit Core includes a handy automation script that will automatically download the correct dependencies and launch the application.
+Ensure you have the following installed on your machine:
+- **Node.js**: `v16.0.0` or higher ([Download Node.js](https://nodejs.org/))
+- **Python**: `v3.10` or higher with `pip` ([Download Python](https://www.python.org/))
+- **Git**: ([Download Git](https://git-scm.com/))
 
-1. Double-click **`run.bat`** in the project root.
-2. The script will automatically check for and install required Node.js and Python dependencies.
-3. Select an Execution Mode:
-   - **`1`** - Run in Development Mode (Vite Dev Server + Electron CLI)
-   - **`2`** - Build Production Python Binary & Run Packaged Front-end
+---
+
+### Option 1: Automated Launcher (Recommended for Windows)
+
+Orbit Core includes an automated launcher script `orbiting.bat` or `run.bat` that automatically checks for missing dependencies, installs Node & Python packages, and launches the app.
+
+1. Double-click **`orbiting.bat`** (or `run.bat`) in the project root folder.
+2. Select your desired mode:
+   - **`1`** - Run in **Development Mode** (Vite Dev Server + Electron CLI)
+   - **`2`** - Build Production Python Binary & Run Packaged App
    - **`3`** - Exit
 
-### Manual Setup
-If you prefer not to use `run.bat`, you can set up the environment manually:
+---
+
+### Option 2: Manual Setup & Launch
+
+If you prefer setting up manually via command line:
+
+#### 1. Clone the Repository
 ```bash
-# 1. Install Node.js dependencies
+git clone https://github.com/raeyyanhabib/orbitcore.git
+cd orbitcore
+```
+
+#### 2. Install Node.js Dependencies
+```bash
 npm install
+```
 
-# 2. Install Python dependencies
+#### 3. Install Python Dependencies
+```bash
 pip install pywin32 psutil duckduckgo_search pyinstaller
+```
 
-# 3. Start the application in dev mode
+#### 4. Run in Development Mode
+Start the Vite dev server and Electron app:
+```bash
+# Terminal 1: Start Vite dev server
 npm run dev
-# In a separate terminal:
+
+# Terminal 2: Launch Electron main process
 npm start
 ```
 
-## 🏗️ Technology Stack
-- **Frontend**: Electron, React 18, Three.js, Tailwind CSS v3
-- **Backend**: Python 3.10+, psutil (OS monitoring), duckduckgo-search (web research)
-- **Database**: SQLite 3
-- **Build Tools**: Vite, PyInstaller
+#### 5. Build for Production
+To test production bundling:
+```bash
+# Compile front-end bundle
+npm run build
+```
 
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/raeyyanhabib/orbitcore/issues).
+---
+
+## 🏗️ Technology Stack
+
+- **Frontend**: Electron, React 18, Three.js (3D graphics), Tailwind CSS v3
+- **Backend Subprocess**: Python 3.10+, `psutil` (Active window detection), `win32gui`, `duckduckgo_search`
+- **Database**: SQLite 3 (WAL mode)
+- **Build Tools**: Vite 8, PyInstaller
+
+---
+
+## 📁 Project Structure
+
+```
+orbitcore/
+├── public/
+│   └── reminders/          # Motivational text phrase files (1.txt - 25.txt)
+├── src/
+│   ├── backend/
+│   │   ├── monitor.py      # Python subprocess monitoring thread & IPC stdio listener
+│   │   └── db.py           # SQLite database schema, CRUD, & analytics queries
+│   ├── main/
+│   │   └── main.js         # Electron main process, window management, & IPC routing
+│   ├── preload/
+│   │   └── preload.js      # Context-isolated whitelist IPC bridge
+│   └── renderer/
+│       ├── App.jsx         # Global state & hash-routing mode manager
+│       ├── components/
+│       │   ├── DashboardView.jsx     # Task CRUD, filters, & task detail panel
+│       │   ├── OrbitView.jsx         # 3D Three.js solar system desktop widget
+│       │   ├── AnalyticsView.jsx     # Heatmap, KPI cards, & focus ratio bar
+│       │   ├── SettingsView.jsx      # Widget sliders, CSV export, & settings JSON import/export
+│       │   ├── RemindersOverlay.jsx  # Side notification overlay
+│       │   └── FocusModeOverlay.jsx  # Playful distraction alerts
+│       └── index.css                 # Design system tokens & Tailwind CSS utilities
+├── focusModemsgs.txt        # Customizable focus distraction messages
+├── package.json
+└── vite.config.js
+```
+
+---
 
 ## 📄 License
-This project is licensed under the ISC License.
->>>>>>> 1f3f9b0 (Initial commit)
-   
+
+This project is licensed under the **ISC License**.
