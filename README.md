@@ -1,24 +1,32 @@
-# Orbit Core - Task Tracker 🌌
+# Orbit Core — Focus Engine & Task Tracker 🌌
 
-**Orbit Task Tracker** is a desktop productivity application that combines intelligent task management with an engaging visual solar system interface and automatic application activity monitoring.
+**Orbit Core** is a modern desktop productivity application combining intelligent task management, active application focus monitoring, and an interactive 3D solar system interface.
 
-The app operates in two distinct modes:
-1. **Dashboard Mode**: A comprehensive 1280x800 desktop console for task creation, deadline management, research tips, analytics, and settings.
-2. **Orbit Mode**: An ultra-minimalist, 30 FPS translucent desktop widget where active tasks orbit a central sun as colorful planets.
+The application operates in two distinct modes:
+1. **Dashboard Mode**: A comprehensive 1280x800 desktop console for task creation, deadline tracking, DuckDuckGo research tips, analytics, color themes, and system settings.
+2. **Orbit Mode**: An ultra-minimalist, 30 FPS translucent desktop widget where active tasks orbit a central sun as colorful 3D planets.
 
 ---
 
 ## ✨ Key Features
 
 - 🚀 **Dual Window Architecture**: Switch seamlessly between standard Dashboard mode and a translucent Orbit widget docked to your desktop.
-- 🪐 **Interactive 3D Solar System**: Tasks rendered as orbiting planets with size and speed scaled by priority.
-- 🎯 **Intelligent Focus Monitoring**: Real-time foreground app tracking with playful distraction alerts (`FocusModeOverlay`) when accessing unapproved applications.
+- 🪐 **Interactive 3D Solar System**:
+  - Tasks rendered as orbiting planets with size and speed scaled by priority.
+  - Multi-layered glowing Sun aura corona shader.
+  - High-priority tasks feature Saturn-style planetary rings and metallic materials.
+  - 2,000-particle starfield backdrop with raycasted hover tooltips.
+- 🎨 **6-Variant Synchronized Theme System**:
+  - **3 Dark Palettes**: Deep Teal (default), Midnight Purple, Warm Sunset.
+  - **3 Light Palettes**: Light Teal, Light Lavender, Light Warm.
+  - Instant theme switching in Settings with 25+ synchronized CSS tokens and `localStorage` persistence.
+- 🎯 **Intelligent Focus Monitoring**: Real-time foreground app tracking on Windows (`win32gui` / `psutil`) with playful distraction alerts (`FocusModeOverlay`) when accessing unapproved applications.
 - ⏰ **Deadline & Reminders System**:
   - Task due-date picker with urgency badges (`Overdue!`, `Due in 3h`).
-  - Side notification system (`RemindersOverlay`) delivering motivational reminders based on INT8 timer ticks.
+  - Side notification overlay (`RemindersOverlay`) delivering motivational reminders based on INT8 timer ticks.
 - 📊 **30-Day Productivity Heatmap & Analytics**: Real-time focus logging with daily heatmap tooltips, top tasks breakdown, and On-Task vs. Off-Task ratio bars.
-- 🔍 **Automated Web Research**: Queries DuckDuckGo for best practices tailored to your task and user profile.
-- 🔒 **Data Privacy**: Local-first SQLite database with Write-Ahead Logging (WAL). Export logs to CSV or backup settings to JSON anytime.
+- 🔍 **Automated Web Research**: Queries DuckDuckGo for best practices tailored to your task title and user profile.
+- 🔒 **Local Data Privacy**: Local-first SQLite database with Write-Ahead Logging (WAL). Export logs to CSV or backup settings to JSON anytime.
 
 ---
 
@@ -35,19 +43,17 @@ Ensure you have the following installed on your machine:
 
 ### Option 1: Automated Launcher (Recommended for Windows)
 
-Orbit Core includes an automated launcher script `orbiting.bat` or `run.bat` that automatically checks for missing dependencies, installs Node & Python packages, and launches the app.
+Orbit Core includes an automated launcher script `orbiting.bat` that automatically checks for missing dependencies, installs Node & Python packages, and launches the app.
 
-1. Double-click **`orbiting.bat`** (or `run.bat`) in the project root folder.
+1. Double-click **`orbiting.bat`** in the project root folder.
 2. Select your desired mode:
-   - **`1`** - Run in **Development Mode** (Vite Dev Server + Electron CLI)
-   - **`2`** - Build Production Python Binary & Run Packaged App
-   - **`3`** - Exit
+   - **`1`** — Run in **Development Mode** (Vite Dev Server + Electron CLI)
+   - **`2`** — Build Production Python Binary & Run Packaged App
+   - **`3`** — Exit
 
 ---
 
 ### Option 2: Manual Setup & Launch
-
-If you prefer setting up manually via command line:
 
 #### 1. Clone the Repository
 ```bash
@@ -75,10 +81,8 @@ npm run dev
 npm start
 ```
 
-#### 5. Build for Production
-To test production bundling:
+#### 5. Build Production Frontend Bundle
 ```bash
-# Compile front-end bundle
 npm run build
 ```
 
@@ -97,27 +101,38 @@ npm run build
 
 ```
 orbitcore/
+├── docs/                     # Project documentation (Architecture, Status, PRD, Guides)
+│   ├── ARCHITECTURE.md
+│   ├── STATUS.md
+│   ├── implement_rn.md
+│   ├── orbitscreens.txt
+│   ├── theEngineer.md
+│   ├── theEngineerGuide.md
+│   └── thePRD.md
 ├── public/
-│   └── reminders/          # Motivational text phrase files (1.txt - 25.txt)
+│   └── reminders/            # Motivational text phrase files (1.txt - 25.txt)
 ├── src/
 │   ├── backend/
-│   │   ├── monitor.py      # Python subprocess monitoring thread & IPC stdio listener
-│   │   └── db.py           # SQLite database schema, CRUD, & analytics queries
+│   │   ├── monitor.py        # Python subprocess monitoring thread & IPC stdio listener
+│   │   └── db.py             # SQLite database schema, CRUD, & analytics queries
 │   ├── main/
-│   │   └── main.js         # Electron main process, window management, & IPC routing
+│   │   └── main.js           # Electron main process, window management, & IPC routing
 │   ├── preload/
-│   │   └── preload.js      # Context-isolated whitelist IPC bridge
+│   │   └── preload.js        # Context-isolated whitelist IPC bridge
 │   └── renderer/
-│       ├── App.jsx         # Global state & hash-routing mode manager
+│       ├── App.jsx           # Global state, theme hook, & hash-routing mode manager
+│       ├── themes.js         # 6 synchronized color palettes (Dark & Light variants)
+│       ├── hooks/
+│       │   └── useTheme.js   # Dynamic theme hook & localStorage persistence
 │       ├── components/
 │       │   ├── DashboardView.jsx     # Task CRUD, filters, & task detail panel
 │       │   ├── OrbitView.jsx         # 3D Three.js solar system desktop widget
 │       │   ├── AnalyticsView.jsx     # Heatmap, KPI cards, & focus ratio bar
-│       │   ├── SettingsView.jsx      # Widget sliders, CSV export, & settings JSON import/export
+│       │   ├── SettingsView.jsx      # Theme selector grid, sliders, & data export
 │       │   ├── RemindersOverlay.jsx  # Side notification overlay
 │       │   └── FocusModeOverlay.jsx  # Playful distraction alerts
 │       └── index.css                 # Design system tokens & Tailwind CSS utilities
-├── focusModemsgs.txt        # Customizable focus distraction messages
+├── focusModemsgs.txt          # Customizable focus distraction messages
 ├── package.json
 └── vite.config.js
 ```

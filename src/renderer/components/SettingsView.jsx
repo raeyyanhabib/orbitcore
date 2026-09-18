@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-export default function SettingsView({ settings, theme, toggleTheme }) {
+export default function SettingsView({ settings, theme, themeName, onThemeChange, allThemes, toggleTheme }) {
   const [localSettings, setLocalSettings] = useState(settings || {});
-  
+
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
@@ -25,32 +25,103 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
     window.electronAPI.sendTaskAction("set-orbit-opacity", { opacity: val });
   };
 
-  const handleExportLogs = () => {
-    window.electronAPI.sendTaskAction("exportLogs");
-  };
+  const darkThemes = Object.entries(allThemes || {}).filter(([_, t]) => t.mode === 'dark');
+  const lightThemes = Object.entries(allThemes || {}).filter(([_, t]) => t.mode === 'light');
+  const themesForCurrentMode = theme === 'light' ? lightThemes : darkThemes;
 
   return (
     <div className="w-full h-full pb-12 overflow-y-auto max-h-[calc(100vh-100px)] custom-scrollbar pr-2">
-      {/* Title */}
-      <h2 className="text-headline-lg font-headline-lg font-bold text-on-surface mb-2 mt-4 tracking-tight">Settings</h2>
-      <p className="text-body-md font-body-md text-on-surface-variant mb-section-gap">Customize your tracking and app preferences.</p>
+      {/* Header */}
+      <div className="mb-8 mt-2">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-1 h-6 rounded-full" style={{ background: "var(--primary)" }} />
+          <h2 className="text-2xl font-extrabold tracking-tight text-on-surface">Settings</h2>
+        </div>
+        <p className="text-sm pl-4 text-on-surface-variant">Customize your tracking and app preferences.</p>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter max-w-7xl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-7xl">
         
-        {/* Orbit Widget Preferences */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group lg:col-span-2">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
-          
+        {/* THEMES SELECTOR */}
+        <div className="lg:col-span-2 bg-surface-container rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-primary text-2xl">palette</span>
+              <div>
+                <h3 className="text-lg font-bold text-on-surface">Color Themes</h3>
+                <p className="text-xs text-on-surface-variant">Select a palette for the active {theme === 'light' ? 'Light' : 'Dark'} Mode.</p>
+              </div>
+            </div>
+            
+            <div className="bg-surface p-1 rounded-lg flex items-center">
+              <button 
+                onClick={() => theme !== "dark" && toggleTheme && toggleTheme()}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${theme === 'dark' ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Dark
+              </button>
+              <button 
+                onClick={() => theme !== "light" && toggleTheme && toggleTheme()}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${theme === 'light' ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Light
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {themesForCurrentMode.map(([key, themeData]) => (
+              <button
+                key={key}
+                onClick={() => onThemeChange && onThemeChange(key)}
+                className={`p-4 rounded-xl transition-all cursor-pointer text-left relative ${
+                  themeName === key
+                    ? 'ring-2 ring-primary shadow-lg'
+                    : 'hover:bg-surface-variant/20'
+                }`}
+                style={{
+                  background: 'var(--surface-container-high)',
+                  color: 'var(--on-surface)'
+                }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex gap-1.5">
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full" 
+                      style={{ background: themeData.colors.primary }}
+                    />
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full"
+                      style={{ background: themeData.colors.secondary }}
+                    />
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full"
+                      style={{ background: themeData.colors.tertiary }}
+                    />
+                  </div>
+                  {themeName === key && (
+                    <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
+                  )}
+                </div>
+                <h4 className="font-bold text-sm mb-0.5">{themeData.name}</h4>
+                <p className="text-xs text-on-surface-variant">{themeData.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Orbit Mode Preferences */}
+        <div className="lg:col-span-2 bg-surface-container rounded-2xl p-6 flex flex-col gap-6">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">public</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Orbit Mode Preferences</h3>
+            <h3 className="text-lg font-bold text-on-surface">Orbit Mode Preferences</h3>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Sun Size</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Central core scale ({localSettings.orbitSunSize || 100}%).</p>
+                <h4 className="text-sm font-semibold text-on-surface">Sun Size</h4>
+                <p className="text-xs text-on-surface-variant">Core scale ({localSettings.orbitSunSize || 100}%).</p>
               </div>
               <input 
                 type="range"
@@ -63,10 +134,10 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
               />
             </div>
 
-            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Planet Scale</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Task planets scale ({localSettings.orbitPlanetSize || 1}x).</p>
+                <h4 className="text-sm font-semibold text-on-surface">Planet Scale</h4>
+                <p className="text-xs text-on-surface-variant">Task planets ({localSettings.orbitPlanetSize || 1}x).</p>
               </div>
               <input 
                 type="range"
@@ -79,10 +150,10 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
               />
             </div>
 
-            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Widget Opacity</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Translucency ({Math.round((localSettings.orbitOpacity || 0.75) * 100)}%).</p>
+                <h4 className="text-sm font-semibold text-on-surface">Widget Opacity</h4>
+                <p className="text-xs text-on-surface-variant">Translucency ({Math.round((localSettings.orbitOpacity || 0.75) * 100)}%).</p>
               </div>
               <input 
                 type="range"
@@ -96,16 +167,16 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t border-outline/10">
-            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Display Mode</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Window positioning style in Orbit Mode.</p>
+                <h4 className="text-sm font-semibold text-on-surface">Display Mode</h4>
+                <p className="text-xs text-on-surface-variant">Window positioning style in Orbit Mode.</p>
               </div>
               <select 
                 value={localSettings.orbitDisplayMode || "overlay"}
                 onChange={(e) => updateSetting("orbitDisplayMode", e.target.value)}
-                className="bg-surface-container border border-outline/20 text-on-surface text-label-md rounded-lg p-2 focus:border-primary focus:outline-none transition-colors cursor-pointer"
+                className="bg-surface-container text-on-surface text-xs rounded-lg p-2 focus:outline-none cursor-pointer"
               >
                 <option value="overlay">Transparent Overlay (Always on Top)</option>
                 <option value="floating">Floating Window (Resizable)</option>
@@ -113,10 +184,10 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
               </select>
             </div>
 
-            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Always On Top (Hover Mode)</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Keep Orbit widget floating over active apps.</p>
+                <h4 className="text-sm font-semibold text-on-surface">Always On Top</h4>
+                <p className="text-xs text-on-surface-variant">Keep Orbit widget floating over active apps.</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 
@@ -132,20 +203,18 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
         </div>
         
         {/* User Profile panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
-          
+        <div className="bg-surface-container rounded-2xl p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">person</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">User Profile</h3>
+            <h3 className="text-lg font-bold text-on-surface">User Profile</h3>
           </div>
           
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             <div>
-              <label className="text-label-sm font-label-sm text-on-surface-variant block mb-1">Name</label>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1">Name</label>
               <input 
                 type="text"
-                className="w-full bg-surface border border-outline/20 text-on-surface font-body-md rounded-xl px-3 py-2 focus:outline-none focus:border-primary transition-colors"
+                className="w-full bg-surface text-on-surface text-sm rounded-xl px-3 py-2 focus:outline-none"
                 value={localSettings.userName || ""}
                 onChange={(e) => updateSetting("userName", e.target.value)}
                 placeholder="e.g. Raeyyan"
@@ -153,19 +222,19 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-label-sm font-label-sm text-on-surface-variant block mb-1">Age</label>
+                <label className="text-xs font-semibold text-on-surface-variant block mb-1">Age</label>
                 <input 
                   type="number"
-                  className="w-full bg-surface border border-outline/20 text-on-surface font-body-md rounded-xl px-3 py-2 focus:outline-none focus:border-primary transition-colors"
+                  className="w-full bg-surface text-on-surface text-sm rounded-xl px-3 py-2 focus:outline-none"
                   value={localSettings.userAge || ""}
                   onChange={(e) => updateSetting("userAge", e.target.value)}
                   placeholder="e.g. 20"
                 />
               </div>
               <div>
-                <label className="text-label-sm font-label-sm text-on-surface-variant block mb-1">Occupation</label>
+                <label className="text-xs font-semibold text-on-surface-variant block mb-1">Occupation</label>
                 <select 
-                  className="w-full bg-surface border border-outline/20 text-on-surface font-body-md rounded-xl px-3 py-2 focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                  className="w-full bg-surface text-on-surface text-sm rounded-xl px-3 py-2 focus:outline-none cursor-pointer"
                   value={localSettings.userOccupation || "Student"}
                   onChange={(e) => updateSetting("userOccupation", e.target.value)}
                 >
@@ -180,168 +249,98 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
         </div>
 
         {/* Display panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors"></div>
-          
+        <div className="bg-surface-container rounded-2xl p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">desktop_windows</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Display</h3>
+            <h3 className="text-lg font-bold text-on-surface">Display & Visuals</h3>
           </div>
           
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Theme Preference</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Switch between dark and light appearance.</p>
-              </div>
-              <div className="bg-surface p-1 rounded-lg flex items-center border border-outline/20">
-                <button 
-                  onClick={() => theme !== "dark" && toggleTheme && toggleTheme()}
-                  className={`px-4 py-1.5 rounded-md text-label-md font-label-md transition-colors cursor-pointer active:scale-95 ${theme === 'dark' ? 'bg-primary-container text-on-primary-container font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}
-                >
-                  Dark
-                </button>
-                <button 
-                  onClick={() => theme !== "light" && toggleTheme && toggleTheme()}
-                  className={`px-4 py-1.5 rounded-md text-label-md font-label-md transition-colors cursor-pointer active:scale-95 ${theme === 'light' ? 'bg-primary-container text-on-primary-container font-bold' : 'text-on-surface-variant hover:text-on-surface'}`}
-                >
-                  Light
-                </button>
-              </div>
+          <div className="flex justify-between items-center pt-2">
+            <div>
+              <h4 className="text-sm font-semibold text-on-surface">Animations</h4>
+              <p className="text-xs text-on-surface-variant">Enable floating and orbit visual effects.</p>
             </div>
-            
-            <div className="h-px bg-outline/20 w-full my-2"></div>
-            
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Animations</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Enable floating and orbit visual effects.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={localSettings.animations !== "false"} onChange={(e) => updateSetting("animations", e.target.checked ? "true" : "false")} />
-                <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={localSettings.animations !== "false"} onChange={(e) => updateSetting("animations", e.target.checked ? "true" : "false")} />
+              <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+            </label>
           </div>
         </div>
 
         {/* Monitoring panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-secondary/5 rounded-full blur-2xl group-hover:bg-secondary/10 transition-colors"></div>
-          
+        <div className="bg-surface-container rounded-2xl p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-secondary">track_changes</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Monitoring</h3>
+            <h3 className="text-lg font-bold text-on-surface">Monitoring</h3>
           </div>
           
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Polling Interval</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">How often the system checks active window (seconds).</p>
-              </div>
-              <select 
-                value={localSettings.checkInterval || "3"} 
-                onChange={(e) => updateSetting("checkInterval", e.target.value)}
-                className="bg-surface border border-outline/20 text-on-surface text-label-md rounded-lg p-2 focus:border-primary focus:outline-none transition-colors"
-              >
-                <option value="1">1s (Aggressive)</option>
-                <option value="3">3s (Balanced)</option>
-                <option value="5">5s (Battery Saver)</option>
-              </select>
+          <div className="flex justify-between items-center">
+            <div>
+              <h4 className="text-sm font-semibold text-on-surface">Polling Interval</h4>
+              <p className="text-xs text-on-surface-variant">Frequency of window checking.</p>
             </div>
-            
-            <div className="h-px bg-outline/20 w-full my-2"></div>
-            
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">DuckDuckGo Research</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Automatically fetch tips for new tasks.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={localSettings.researchEnabled !== "false"} onChange={(e) => updateSetting("researchEnabled", e.target.checked ? "true" : "false")} />
-                <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
-              </label>
-            </div>
+            <select 
+              value={localSettings.checkInterval || "3"} 
+              onChange={(e) => updateSetting("checkInterval", e.target.value)}
+              className="bg-surface text-on-surface text-xs rounded-lg p-2 focus:outline-none cursor-pointer"
+            >
+              <option value="1">1s (Aggressive)</option>
+              <option value="3">3s (Balanced)</option>
+              <option value="5">5s (Battery Saver)</option>
+            </select>
           </div>
-        </div>
 
-        {/* Behavioral panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-tertiary/5 rounded-full blur-2xl group-hover:bg-tertiary/10 transition-colors"></div>
-          
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-tertiary">psychology</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Behavioral</h3>
-          </div>
-          
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Focus Reminders</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Play gentle beeps during focus mode if distracted.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={localSettings.audioBeeps !== "false"} onChange={(e) => updateSetting("audioBeeps", e.target.checked ? "true" : "false")} />
-                <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-tertiary"></div>
-              </label>
+          <div className="flex justify-between items-center">
+            <div>
+              <h4 className="text-sm font-semibold text-on-surface">DuckDuckGo Research</h4>
+              <p className="text-xs text-on-surface-variant">Auto-fetch tips for new tasks.</p>
             </div>
-            
-            <div className="h-px bg-outline/20 w-full my-2"></div>
-            
-            <div className="flex justify-between items-start">
-              <div className="flex-1 mr-4">
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Edit Focus Quotes</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Modify the motivational quotes shown when drifting off-task. (Requires editing focusModemsgs.txt in root folder)</p>
-              </div>
-            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={localSettings.researchEnabled !== "false"} onChange={(e) => updateSetting("researchEnabled", e.target.checked ? "true" : "false")} />
+              <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+            </label>
           </div>
         </div>
 
         {/* Data panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col gap-6 relative overflow-hidden group">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-error/5 rounded-full blur-2xl group-hover:bg-error/10 transition-colors"></div>
-          
+        <div className="bg-surface-container rounded-2xl p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-error">database</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Data Management</h3>
+            <h3 className="text-lg font-bold text-on-surface">Data Management</h3>
           </div>
           
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Settings Backup</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Export or import your configurations.</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleImport} className="text-on-surface-variant hover:text-on-surface p-2 rounded-lg bg-surface hover:bg-surface-variant border border-outline/20 transition-all cursor-pointer">
-                  <span className="material-symbols-outlined text-[20px]">upload</span>
-                </button>
-                <button onClick={handleExport} className="text-on-surface-variant hover:text-on-surface p-2 rounded-lg bg-surface hover:bg-surface-variant border border-outline/20 transition-all cursor-pointer">
-                  <span className="material-symbols-outlined text-[20px]">download</span>
-                </button>
-              </div>
+          <div className="flex justify-between items-center">
+            <div>
+              <h4 className="text-sm font-semibold text-on-surface">Backup & Export</h4>
+              <p className="text-xs text-on-surface-variant">Configurations and time logs.</p>
             </div>
-            
-            <div className="h-px bg-outline/20 w-full my-2"></div>
-            
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Time Log Retention</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Days to keep raw focus monitoring data.</p>
-              </div>
-              <select 
-                value={localSettings.retentionDays || "90"} 
-                onChange={(e) => updateSetting("retentionDays", e.target.value)}
-                className="bg-surface border border-outline/20 text-on-surface text-label-md rounded-lg p-2 focus:border-error focus:outline-none transition-colors cursor-pointer"
-              >
-                <option value="30">30 Days</option>
-                <option value="90">90 Days</option>
-                <option value="365">1 Year</option>
-              </select>
+            <div className="flex gap-2">
+              <button onClick={handleImport} title="Import Settings" className="text-on-surface p-2 rounded-lg bg-surface hover:bg-surface-variant transition-all cursor-pointer flex items-center gap-1 text-xs">
+                <span className="material-symbols-outlined text-sm">upload</span> Import
+              </button>
+              <button onClick={handleExport} title="Export Settings" className="text-on-surface p-2 rounded-lg bg-surface hover:bg-surface-variant transition-all cursor-pointer flex items-center gap-1 text-xs">
+                <span className="material-symbols-outlined text-sm">download</span> Export
+              </button>
             </div>
           </div>
+
+          <div className="flex justify-between items-center">
+            <div>
+              <h4 className="text-sm font-semibold text-on-surface">Log Retention</h4>
+              <p className="text-xs text-on-surface-variant">Focus monitoring history duration.</p>
+            </div>
+            <select 
+              value={localSettings.retentionDays || "90"} 
+              onChange={(e) => updateSetting("retentionDays", e.target.value)}
+              className="bg-surface text-on-surface text-xs rounded-lg p-2 focus:outline-none cursor-pointer"
+            >
+              <option value="30">30 Days</option>
+              <option value="90">90 Days</option>
+              <option value="365">1 Year</option>
+            </select>
+          </div>
         </div>
+
       </div>
     </div>
   );

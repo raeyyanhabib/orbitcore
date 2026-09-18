@@ -46,9 +46,9 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
       return;
     }
 
-    let color = "#FFA500";
-    if (taskPriority === "High") color = "#FF0000";
-    else if (taskPriority === "Low") color = "#FFFF00";
+    let color = "#f0a36e";
+    if (taskPriority === "High") color = "#ff6464";
+    else if (taskPriority === "Low") color = "#6bd8cb";
 
     const parsedTags = taskTags ? JSON.stringify(taskTags.split(',').map(t => t.trim()).filter(Boolean)) : "[]";
 
@@ -374,10 +374,13 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
   // Dashboard View Main
   return (
     <div className="w-full h-full pb-8">
-      {/* Title */}
-      <div className="mb-section-gap mt-4">
-        <h2 className="text-headline-lg font-headline-lg font-bold text-on-surface tracking-tight">Dashboard</h2>
-        <p className="text-body-md font-body-md text-on-surface-variant mt-1">Manage and track your active tasks.</p>
+      {/* Header */}
+      <div className="mb-8 mt-2">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-1 h-6 rounded-full" style={{ background: "var(--primary)" }} />
+          <h2 className="text-2xl font-extrabold tracking-tight text-on-surface" style={{ letterSpacing: "-0.03em" }}>Dashboard</h2>
+        </div>
+        <p className="text-sm pl-4 text-on-surface-variant">Manage and track your active missions.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter auto-rows-max max-w-7xl">
@@ -385,103 +388,91 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
           
           {/* Create Task Form Panel */}
           <CollapsiblePanel title="Create Task" icon="add_circle">
-            <form onSubmit={handleCreateTask} className="space-y-4">
-              {/* Row 1: Full-width Task Title */}
+            <form onSubmit={handleCreateTask} className="space-y-3">
               <div>
-                <input 
-                  type="text" 
-                  placeholder="What are you working on?..." 
-                  className="w-full bg-surface border border-outline/20 text-on-surface font-body-md rounded-xl px-4 py-3 focus:outline-none focus:border-primary transition-colors placeholder:text-on-surface-variant/50"
+                <input
+                  type="text"
+                  placeholder="What are you working on?"
+                  className="input-premium"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                   required
                 />
               </div>
 
-              {/* Row 2: Deadline, Tags, Priority, Type, and Submit */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-center">
-                <div>
-                  <input 
-                    type="datetime-local" 
-                    title="Task Deadline"
-                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
-                    value={taskDeadline}
-                    onChange={(e) => setTaskDeadline(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <input 
-                    type="text" 
-                    placeholder="Tags (coding, study...)" 
-                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors text-xs"
-                    value={taskTags}
-                    onChange={(e) => setTaskTags(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <select 
-                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
-                    value={taskPriority}
-                    onChange={(e) => setTaskPriority(e.target.value)}
-                  >
-                    <option value="High">Priority: High</option>
-                    <option value="Medium">Priority: Medium</option>
-                    <option value="Low">Priority: Low</option>
-                  </select>
-                </div>
-                <div>
-                  <select 
-                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
-                    value={taskType}
-                    onChange={(e) => setTaskType(e.target.value)}
-                  >
-                    <option value="One-Time">Type: One-Time</option>
-                    <option value="Daily">Type: Daily</option>
-                    <option value="Recurring">Type: Recurring</option>
-                  </select>
-                </div>
-                <div>
-                  <button 
-                    type="submit" 
-                    className="w-full bg-primary hover:bg-primary-fixed text-on-primary rounded-xl px-4 py-2.5 font-label-md font-bold transition-all cursor-pointer active:scale-95 shadow-md flex items-center justify-center gap-1 text-sm"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">add</span>
-                    <span>Add Task</span>
-                  </button>
-                </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 items-center">
+                <input
+                  type="datetime-local"
+                  title="Deadline"
+                  className="input-premium text-xs col-span-1"
+                  value={taskDeadline}
+                  onChange={(e) => setTaskDeadline(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Tags (coding, study...)"
+                  className="input-premium text-xs"
+                  value={taskTags}
+                  onChange={(e) => setTaskTags(e.target.value)}
+                />
+                <select
+                  className="input-premium text-xs cursor-pointer"
+                  value={taskPriority}
+                  onChange={(e) => setTaskPriority(e.target.value)}
+                >
+                  <option value="High">🔴 High Priority</option>
+                  <option value="Medium">🟠 Medium Priority</option>
+                  <option value="Low">🟢 Low Priority</option>
+                </select>
+                <select
+                  className="input-premium text-xs cursor-pointer"
+                  value={taskType}
+                  onChange={(e) => setTaskType(e.target.value)}
+                >
+                  <option value="One-Time">One-Time</option>
+                  <option value="Daily">Daily</option>
+                  <option value="Recurring">Recurring</option>
+                </select>
               </div>
+
+              <button
+                type="submit"
+                className="btn-primary w-full justify-center text-sm py-2.5"
+              >
+                <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                Add Mission
+              </button>
             </form>
           </CollapsiblePanel>
 
           {/* Task List Panel */}
           <CollapsiblePanel title="Active Tasks" icon="task_alt" badge={taskList.filter(t => !t.is_completed).length}>
-            {/* Search, Filter & Sort Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-              <input 
-                type="text" 
-                placeholder="Search active tasks..." 
-                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
+              <input
+                type="text"
+                placeholder="Search missions..."
+                className="input-premium text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              <select 
-                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary cursor-pointer"
+              <select
+                className="input-premium text-xs cursor-pointer"
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value)}
               >
                 <option value="">All Priorities</option>
-                <option value="High">Priority: High</option>
-                <option value="Medium">Priority: Medium</option>
-                <option value="Low">Priority: Low</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
               </select>
-              <select 
-                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary cursor-pointer"
+              <select
+                className="input-premium text-xs cursor-pointer"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
               >
-                <option value="created">Sort: Most Recent</option>
-                <option value="priority">Sort: Priority</option>
-                <option value="dueDate">Sort: Due Date</option>
+                <option value="created">Most Recent</option>
+                <option value="priority">By Priority</option>
+                <option value="dueDate">By Due Date</option>
               </select>
             </div>
 
@@ -492,64 +483,85 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                   <p className="text-body-md text-center">No matching tasks found.</p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col gap-2">
                   {filteredTasks.map((task) => {
                     const isActive = activeTask && activeTask.id === task.id;
+                    const PRIORITY_DOT = {
+                      High: "var(--error)",
+                      Medium: "var(--secondary)",
+                      Low: "var(--primary)",
+                    };
                     return (
-                      <div 
-                        key={task.id} 
+                      <div
+                        key={task.id}
                         onClick={() => openTaskDetails(task)}
-                        className={`group bg-surface hover:bg-surface-variant border border-outline/20 rounded-xl p-4 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all ${isActive ? 'ring-1 ring-primary shadow-[0_0_15px_rgba(107,216,203,0.15)]' : ''}`}
+                        className={`group cursor-pointer active:scale-[0.99] transition-all rounded-xl p-3.5 flex items-center justify-between border ${
+                          isActive
+                            ? "border-primary"
+                            : "border-transparent hover:border-outline/20"
+                        }`}
+                        style={{
+                          background: isActive
+                            ? "var(--primary-container)"
+                            : "var(--surface)",
+                        }}
                       >
-                        <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-4">
-                          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isActive ? 'bg-primary animate-pulse shadow-[0_0_10px_rgba(107,216,203,0.8)]' : 'bg-surface-variant border border-outline/20 group-hover:bg-primary/50'}`}></div>
+                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-3">
+                          {/* Priority dot */}
+                          <div
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? "animate-pulse" : ""}`}
+                            style={{
+                              background: PRIORITY_DOT[task.priority] || "var(--secondary)",
+                            }}
+                          />
                           <div className="flex flex-col min-w-0 flex-1">
-                            <span className={`text-body-md font-semibold truncate transition-colors ${isActive ? 'text-primary' : 'text-on-surface group-hover:text-primary-fixed-dim'}`}>
+                            <span className={`text-sm font-semibold truncate ${
+                              isActive ? "text-primary font-bold" : "text-on-surface"
+                            }`}>
                               {task.title}
                             </span>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider">{task.priority}</span>
-                              <span className="text-[10px] uppercase font-bold text-on-surface-variant tracking-wider flex items-center gap-1">
-                                <span className="w-1 h-1 rounded-full bg-on-surface-variant/40"></span> {task.type}
-                              </span>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: PRIORITY_DOT[task.priority] || "var(--secondary)" }}>{task.priority}</span>
+                              <span className="text-[10px] text-on-surface-variant">·</span>
+                              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider">{task.type}</span>
                               {renderDeadlineBadge(task.deadline)}
                               {renderTags(task.tags)}
                             </div>
                           </div>
                         </div>
 
-                        {/* Action Buttons: Visible or Hover-revealed */}
-                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           {isActive ? (
                             <>
-                              <span className="text-[10px] bg-primary/20 text-primary px-2 py-1 rounded-md uppercase font-bold tracking-widest animate-pulse hidden sm:inline-block">Tracking</span>
-                              <button 
+                              <span className="text-[9px] bg-primary/20 text-primary px-2 py-1 rounded-md uppercase font-bold tracking-widest animate-pulse hidden sm:inline-block">Live</span>
+                              <button
                                 onClick={stopFocus}
-                                title="Stop Focus Session"
-                                className="bg-error/20 hover:bg-error text-error hover:text-on-error p-2 rounded-lg transition-all cursor-pointer active:scale-95 flex items-center"
+                                title="Stop Focus"
+                                className="bg-error-container text-on-error-container p-1.5 rounded-lg transition-all cursor-pointer"
                               >
-                                <span className="material-symbols-outlined text-[18px]">stop</span>
+                                <span className="material-symbols-outlined text-[16px]">stop</span>
                               </button>
                             </>
                           ) : (
-                            <button 
+                            <button
                               onClick={() => startFocus(task.id)}
-                              title="Start Focus Session"
-                              className="bg-primary/10 hover:bg-primary text-primary hover:text-on-primary p-2 rounded-lg transition-all opacity-80 group-hover:opacity-100 cursor-pointer active:scale-95 flex items-center"
+                              title="Start Focus"
+                              className="bg-primary-container text-primary hover:bg-primary hover:text-on-primary p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                             >
-                              <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
+                              <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
                             </button>
                           )}
-                          <button 
+                          <button
                             onClick={() => handleCompleteTask(task.id)}
-                            title="Mark as Complete"
-                            className="bg-tertiary/10 hover:bg-tertiary text-tertiary hover:text-on-tertiary-fixed p-2 rounded-lg transition-all opacity-80 group-hover:opacity-100 cursor-pointer active:scale-95 flex items-center"
+                            title="Complete"
+                            className="bg-tertiary-container text-tertiary hover:bg-tertiary hover:text-on-tertiary p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                           >
-                            <span className="material-symbols-outlined text-[18px]">check</span>
+                            <span className="material-symbols-outlined text-[16px]">check</span>
                           </button>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               )}

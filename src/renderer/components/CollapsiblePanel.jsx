@@ -17,41 +17,43 @@ export default function CollapsiblePanel({ title, icon, children, defaultOpen = 
   };
 
   return (
-    <div className="bg-surface-container rounded-2xl border border-outline-variant/30 overflow-hidden transition-all duration-300 shadow-lg mb-6">
+    <div className="overflow-hidden transition-all duration-300 mb-5 rounded-2xl bg-surface-container text-on-surface">
       {/* Panel Header */}
       <button
         onClick={toggleOpen}
         type="button"
-        className="w-full px-6 py-4 flex items-center justify-between bg-surface-container-high/40 hover:bg-surface-container-high/70 transition-colors cursor-pointer select-none"
+        className="w-full px-5 py-3.5 flex items-center justify-between transition-colors cursor-pointer select-none"
+        style={{
+          background: isOpen ? "var(--surface-container-high)" : "transparent",
+        }}
       >
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-2.5">
           {icon && (
-            <span className="material-symbols-outlined text-primary text-xl">
+            <span
+              className="material-symbols-outlined text-[18px] text-primary"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
               {icon}
             </span>
           )}
-          <h2 className="font-space font-bold text-lg text-on-surface">
+          <h2 className="font-bold text-sm tracking-tight text-on-surface">
             {title}
           </h2>
           {badge !== null && badge !== undefined && (
-            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20">
+            <span className="px-2 py-0.5 text-[10px] font-black rounded-full uppercase tracking-wider bg-primary-container text-on-primary-container">
               {badge}
             </span>
           )}
         </div>
 
-        <span
-          className={`material-symbols-outlined text-on-surface-variant transition-transform duration-300 ${
-            isOpen ? 'rotate-180' : 'rotate-0'
-          }`}
-        >
+        <span className={`material-symbols-outlined text-[18px] transition-transform duration-300 text-on-surface-variant ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
           expand_more
         </span>
       </button>
 
       {/* Panel Body */}
       {isOpen && (
-        <div className="p-6 transition-all duration-300">
+        <div className="p-5 transition-all duration-300">
           {children}
         </div>
       )}

@@ -45,16 +45,19 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
 
   return (
     <div className="w-full h-full pb-8">
-      {/* Title */}
-      <div className="flex justify-between items-center mb-section-gap mt-4">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8 mt-2">
         <div>
-          <h2 className="text-headline-lg font-headline-lg font-bold text-on-surface tracking-tight">Analytics</h2>
-          <p className="text-body-md font-body-md text-on-surface-variant mt-1">Review your focus metrics and activity history.</p>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-1 h-6 rounded-full" style={{ background: "var(--primary)" }} />
+            <h2 className="text-2xl font-extrabold tracking-tight text-on-surface" style={{ letterSpacing: "-0.03em" }}>Analytics</h2>
+          </div>
+          <p className="text-sm pl-4 text-on-surface-variant">Review your focus metrics and activity history.</p>
         </div>
         <button 
           onClick={handleExportCSV}
           disabled={exporting}
-          className="flex items-center gap-2 bg-surface hover:bg-surface-variant border border-outline/20 text-on-surface px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+          className="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high text-on-surface px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
         >
           <span className="material-symbols-outlined text-[20px]">{exporting ? 'hourglass_empty' : 'download'}</span>
           <span className="font-label-md font-medium">{exporting ? 'Exporting...' : 'Export CSV'}</span>
@@ -64,10 +67,10 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter max-w-7xl">
         
         {/* KPI Cards */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full group-hover:bg-primary/10 transition-colors"></div>
+        <div className="rounded-2xl p-card-padding flex flex-col justify-between relative overflow-hidden group bg-surface-container text-on-surface">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-bl-full group-hover:bg-primary/20 transition-colors"></div>
           <div>
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+            <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-primary">schedule</span>
             </div>
             <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Focus Time Today</h3>
@@ -78,10 +81,10 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
           </div>
         </div>
 
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-tertiary/5 rounded-bl-full group-hover:bg-tertiary/10 transition-colors"></div>
+        <div className="rounded-2xl p-card-padding flex flex-col justify-between relative overflow-hidden group bg-surface-container text-on-surface">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-tertiary/10 rounded-bl-full group-hover:bg-tertiary/20 transition-colors"></div>
           <div>
-            <div className="w-10 h-10 rounded-full bg-tertiary/20 flex items-center justify-center mb-4">
+            <div className="w-10 h-10 rounded-full bg-tertiary-container flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-tertiary">check_circle</span>
             </div>
             <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Task Completion</h3>
@@ -92,10 +95,10 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
           </div>
         </div>
 
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col justify-between relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 rounded-bl-full group-hover:bg-secondary/10 transition-colors"></div>
+        <div className="rounded-2xl p-card-padding flex flex-col justify-between relative overflow-hidden group bg-surface-container text-on-surface">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/10 rounded-bl-full group-hover:bg-secondary/20 transition-colors"></div>
           <div>
-            <div className="w-10 h-10 rounded-full bg-secondary/20 flex items-center justify-center mb-4">
+            <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-secondary">local_fire_department</span>
             </div>
             <h3 className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Current Streak</h3>
@@ -107,13 +110,13 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
         </div>
 
         {/* Heatmap Panel */}
-        <div className="lg:col-span-2 bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col min-h-[220px]">
+        <div className="lg:col-span-2 rounded-2xl p-card-padding flex flex-col min-h-[220px] bg-surface-container text-on-surface">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-headline-md font-headline-md font-semibold text-on-surface flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">calendar_month</span>
               Productivity Heatmap
             </h3>
-            <span className="text-label-sm font-label-sm bg-surface px-3 py-1 rounded-full text-on-surface-variant border border-outline/20">Last 30 Days</span>
+            <span className="text-label-sm font-label-sm bg-surface-container-high px-3 py-1 rounded-full text-on-surface-variant">Last 30 Days</span>
           </div>
           
           {!hasHeatMapData ? (
@@ -141,7 +144,7 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
         </div>
 
         {/* Top Tasks Panel */}
-        <div className="bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col min-h-[220px]">
+        <div className="rounded-2xl p-card-padding flex flex-col min-h-[220px] bg-surface-container text-on-surface">
           <h3 className="text-headline-md font-headline-md font-semibold text-on-surface mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-tertiary">list_alt</span>
             Top Tasks
@@ -167,7 +170,7 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
                       <span className="text-on-surface">{task.title}</span>
                       <span className={`${textColor} font-bold`}>{task.hours} hrs</span>
                     </div>
-                    <div className="w-full bg-surface rounded-full h-2 overflow-hidden border border-outline/20">
+                    <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
                       <div className={`${color} h-full rounded-full`} style={{ width: `${pct}%` }}></div>
                     </div>
                   </div>
@@ -178,13 +181,13 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
         </div>
 
         {/* Focus Efficiency (On-Task vs Off-Task) Panel */}
-        <div className="lg:col-span-3 bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col">
+        <div className="lg:col-span-3 rounded-2xl p-card-padding flex flex-col bg-surface-container text-on-surface">
           <h3 className="text-headline-md font-headline-md font-semibold text-on-surface mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">pie_chart</span>
             Focus Time Distribution (On-Task vs Off-Task)
           </h3>
 
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-surface p-6 rounded-xl border border-outline/10">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-surface-container-high p-6 rounded-xl">
             <div className="flex flex-col items-center md:items-start space-y-1">
               <span className="text-label-sm text-on-surface-variant uppercase font-bold tracking-wider">Overall Focus Ratio</span>
               <div className="flex items-baseline gap-2">
@@ -198,7 +201,7 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
                 <span className="text-tertiary">Focused: {Math.round(onTaskSec / 60)} mins</span>
                 <span className="text-error">Distracted: {Math.round(offTaskSec / 60)} mins</span>
               </div>
-              <div className="w-full bg-error/30 rounded-full h-4 overflow-hidden border border-outline/20 flex">
+              <div className="w-full bg-error-container/40 rounded-full h-4 overflow-hidden flex">
                 <div 
                   className="bg-tertiary h-full transition-all duration-500 rounded-l-full" 
                   style={{ width: `${onTaskPct}%` }}

@@ -8,6 +8,8 @@ import AnalyticsView from "./components/AnalyticsView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import FirstRunModal from "./components/FirstRunModal.jsx";
 import RemindersOverlay from "./components/RemindersOverlay.jsx";
+import { useTheme } from "./hooks/useTheme";
+import THEMES from "./themes";
 
 export default function App() {
   const initialMode = window.location.hash === "#orbit" ? "orbit" : "dashboard";
@@ -23,23 +25,22 @@ export default function App() {
   const [monitorStatus, setMonitorStatus] = useState("connected");
   const [toast, setToast] = useState({ show: false, type: "success", message: "" });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [theme, setTheme] = useState("dark");
   const [analyticsData, setAnalyticsData] = useState(null);
   const [showFirstRunModal, setShowFirstRunModal] = useState(false);
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("orbitcore-theme") || "dark";
-    setTheme(savedTheme);
-    document.documentElement.setAttribute("data-theme", savedTheme);
-    document.documentElement.className = savedTheme;
-  }, []);
+  // Theme Hook Integration
+  const [themeName, setThemeName] = useState("dark-teal");
+  const { applyTheme } = useTheme(themeName, setThemeName);
+  const currentTheme = THEMES[themeName] || THEMES["dark-teal"];
 
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-    document.documentElement.className = newTheme;
-    localStorage.setItem("orbitcore-theme", newTheme);
+  const toggleThemeMode = () => {
+    if (currentTheme.mode === "dark") {
+      const target = themeName.replace("dark-", "light-");
+      applyTheme(THEMES[target] ? target : "light-teal");
+    } else {
+      const target = themeName.replace("light-", "dark-");
+      applyTheme(THEMES[target] ? target : "dark-teal");
+    }
   };
 
   const triggerToast = (type, message) => {
@@ -54,13 +55,10 @@ export default function App() {
       console.log("📥 Received tasks-list:", tasks);
       setTaskList(tasks);
       
-      // Keep active task updated if still in list
       setActiveTask(prev => {
         if (!prev) return null;
         const updated = tasks.find(t => t.id === prev.id);
-        
         if (updated && updated.is_completed) {
-          // Task was completed elsewhere, clear it
           return null;
         }
         return updated || null;
@@ -87,10 +85,7 @@ export default function App() {
     window.electronAPI.onReceiveFromMain("focus-started", (data) => {
       console.log("✅ Focus started:", data);
       setIsFocusActive(true);
-      setActiveTask(prev => {
-        // Get current task from component state without reading taskList
-        return data.task || prev;
-      });
+      setActiveTask(prev => data.task || prev);
     });
 
     window.electronAPI.onReceiveFromMain("focus-stopped", () => {
@@ -174,10 +169,10 @@ export default function App() {
           onBackToDashboard={() => handleModeTransition("dashboard")}
         />
         {toast.show && (
-          <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-lg text-xs font-semibold border backdrop-blur-md animate-fade-in ${
+          <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-lg text-xs font-semibold backdrop-blur-md animate-fade-in ${
             toast.type === "success" 
-              ? "bg-primary-container text-on-primary-container border-primary" 
-              : "bg-error-container text-on-error-container border-error"
+              ? "bg-primary-container text-on-primary-container" 
+              : "bg-error-container text-on-error-container"
           }`}>
             {toast.message}
           </div>
@@ -187,61 +182,118 @@ export default function App() {
   }
 
   return (
-    <div className="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container flex">
-      {/* SideNavBar */}
-      <nav className={`fixed left-0 top-0 h-full z-40 flex flex-col p-4 bg-surface-container docked left-0 w-64 border-r border-white/5 shadow-2xl transition-transform duration-300 ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
-        <div className="flex items-center gap-4 mb-8 px-2">
-          <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-on-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>rocket_launch</span>
+    <div className="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden flex">
+      {/* SideNavBar — Theme Matched */}
+      <nav 
+        className={`fixed left-0 top-0 h-full z-40 flex flex-col w-[220px] transition-transform duration-300 ${
+          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`} 
+        style={{ 
+          background: currentTheme.mode === 'light' ? "var(--surface-container-low)" : "var(--surface-container)",
+          borderRight: `1px solid var(--outline-variant)`
+        }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 pt-6 pb-5">
+          <div 
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 pulse-glow"
+            style={{ background: "var(--primary-container)" }}
+          >
+            <span className="material-symbols-outlined text-[20px]" style={{ color: "var(--primary)", fontVariationSettings: "'FILL' 1" }}>
+              rocket_launch
+            </span>
           </div>
-          <div className="flex-col flex overflow-hidden">
-            <span className="text-headline-md font-headline-md font-bold text-primary truncate">Orbit Tracker</span>
-            <span className="text-label-sm font-label-sm text-on-surface-variant truncate">Productivity in Motion</span>
+          <div>
+            <p className="text-sm font-extrabold tracking-tight leading-none" style={{ color: "var(--primary)" }}>OrbitCore</p>
+            <p className="text-[10px] mt-0.5" style={{ color: "var(--on-surface-variant)" }}>Focus Engine</p>
           </div>
         </div>
-        <ul className="flex flex-col gap-2 flex-grow">
-          <li>
-            <button onClick={() => { setActiveTab("tasks"); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 rounded-xl p-3 transition-all group ${activeTab === 'tasks' ? 'bg-primary-container text-on-primary-container shadow-[0_0_15px_rgba(107,216,203,0.3)] translate-x-1' : 'text-on-surface-variant hover:bg-surface-variant hover:scale-105 duration-200'}`}>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === 'tasks' ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
-              <span className="text-label-md font-label-md">Dashboard</span>
-            </button>
-          </li>
-          <li>
-            <button onClick={() => handleModeTransition("orbit")} className="w-full flex items-center gap-3 text-on-surface-variant p-3 hover:bg-surface-variant rounded-xl transition-all hover:scale-105 duration-200 group">
-              <span className="material-symbols-outlined">rocket_launch</span>
-              <span className="text-label-md font-label-md">Orbit Mode</span>
-            </button>
-          </li>
-          <li>
-            <button onClick={() => { setActiveTab("analytics"); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 rounded-xl p-3 transition-all group ${activeTab === 'analytics' ? 'bg-primary-container text-on-primary-container shadow-[0_0_15px_rgba(107,216,203,0.3)] translate-x-1' : 'text-on-surface-variant hover:bg-surface-variant hover:scale-105 duration-200'}`}>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === 'analytics' ? "'FILL' 1" : "'FILL' 0" }}>insights</span>
-              <span className="text-label-md font-label-md">Analytics</span>
-            </button>
-          </li>
-          <li>
-            <button onClick={() => { setActiveTab("settings"); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 rounded-xl p-3 transition-all group ${activeTab === 'settings' ? 'bg-primary-container text-on-primary-container shadow-[0_0_15px_rgba(107,216,203,0.3)] translate-x-1' : 'text-on-surface-variant hover:bg-surface-variant hover:scale-105 duration-200'}`}>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: activeTab === 'settings' ? "'FILL' 1" : "'FILL' 0" }}>settings</span>
-              <span className="text-label-md font-label-md">Settings</span>
+
+        {/* Nav Items */}
+        <ul className="flex flex-col gap-1 px-3 py-4 flex-grow">
+          {[
+            { tab: "tasks",     icon: "grid_view",     label: "Dashboard" },
+            { tab: "analytics", icon: "insights",      label: "Analytics" },
+            { tab: "settings",  icon: "settings",      label: "Settings"  },
+          ].map(({ tab, icon, label }) => (
+            <li key={tab}>
+              <button
+                onClick={() => { setActiveTab(tab); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === tab
+                    ? "text-primary font-bold"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/30"
+                }`}
+                style={activeTab === tab ? {
+                  background: "var(--primary-container)",
+                  color: "var(--primary)",
+                } : {}}
+              >
+                <span
+                  className="material-symbols-outlined text-[20px]"
+                  style={{ fontVariationSettings: activeTab === tab ? "'FILL' 1" : "'FILL' 0" }}
+                >
+                  {icon}
+                </span>
+                {label}
+              </button>
+            </li>
+          ))}
+
+          {/* Orbit Mode — special CTA */}
+          <li className="mt-3">
+            <button
+              onClick={() => handleModeTransition("orbit")}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all cursor-pointer group"
+              style={{
+                background: "var(--primary-container)",
+                color: "var(--primary)",
+              }}
+            >
+              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>orbit</span>
+              Orbit Mode
+              <span className="ml-auto text-[9px] font-black uppercase tracking-widest opacity-80">3D</span>
             </button>
           </li>
         </ul>
-        {/* Mobile close button */}
-        <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden mt-auto mb-4 w-full bg-surface-variant text-on-surface rounded-xl py-3 px-4 flex items-center justify-center gap-2 font-label-md text-label-md transition-all duration-200">
-          Close Menu
+
+        {/* Bottom: Monitor status + theme toggle */}
+        <div className="px-4 pb-5 pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`w-1.5 h-1.5 rounded-full ${monitorStatus === 'connected' ? 'bg-tertiary' : 'bg-error'}`} />
+            <span className="text-[10px] font-mono text-on-surface-variant opacity-80">
+              {monitorStatus === 'connected' ? 'Monitor Active' : 'Monitor Offline'}
+            </span>
+          </div>
+
+          <button
+            onClick={toggleThemeMode}
+            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all hover:bg-surface-variant/40 cursor-pointer text-on-surface-variant"
+          >
+            <span className="material-symbols-outlined text-[16px]">
+              {currentTheme.mode === "dark" ? "light_mode" : "dark_mode"}
+            </span>
+            {currentTheme.mode === "dark" ? "Light Mode" : "Dark Mode"}
+          </button>
+        </div>
+
+        {/* Mobile close */}
+        <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden mx-4 mb-4 bg-surface-variant text-on-surface rounded-xl py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-semibold transition-all">
+          Close
         </button>
       </nav>
 
       {/* Main Content Area */}
-      <main className="flex-1 md:ml-64 relative h-screen overflow-y-auto custom-scrollbar flex flex-col w-full">
-        
+      <main className="flex-1 md:ml-[220px] relative h-screen overflow-y-auto custom-scrollbar flex flex-col w-full">
+
         {/* Dashboard Content */}
-        <div className="pt-6 px-4 sm:px-gutter lg:px-section-gap pb-24 max-w-[1600px] w-full mx-auto flex-1 flex flex-col">
-          {/* Mobile menu trigger when menu is closed */}
+        <div className="pt-6 px-5 sm:px-8 pb-24 max-w-[1500px] w-full mx-auto flex-1 flex flex-col">
+          {/* Mobile menu trigger */}
           <div className="md:hidden flex items-center justify-between mb-4">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="text-on-surface-variant hover:text-primary p-2 bg-surface-container border border-white/5 rounded-xl transition-all flex items-center gap-2 font-label-md">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="text-on-surface-variant hover:text-primary p-2 bg-surface-container rounded-xl transition-all flex items-center gap-2 text-sm">
               <span className="material-symbols-outlined">menu</span> Menu
             </button>
-            <h1 className="text-headline-sm font-bold text-primary capitalize">{activeTab}</h1>
+            <h1 className="text-sm font-bold text-primary capitalize">{activeTab}</h1>
           </div>
 
           {activeTab === "tasks" && (
@@ -267,27 +319,28 @@ export default function App() {
           {activeTab === "settings" && (
             <SettingsView 
               settings={settings}
-              theme={theme}
-              toggleTheme={toggleTheme}
+              theme={currentTheme.mode}
+              themeName={themeName}
+              onThemeChange={applyTheme}
+              allThemes={THEMES}
+              toggleTheme={toggleThemeMode}
             />
           )}
         </div>
 
         {/* Footer */}
-        <footer className="mt-auto bg-surface-container-lowest border-t border-white/5 px-gutter py-4 text-xs z-20 flex justify-between items-center w-full max-w-7xl mx-auto">
-          <p className="text-on-surface-variant">© 2024 Orbit Task Tracker. All systems go.</p>
-          <div className="flex gap-4">
-            <span className="text-secondary font-bold transition-colors">
-              Focus Mode: {isFocusActive ? "Active" : "Inactive"}
-            </span>
-          </div>
+        <footer className="mt-auto px-8 py-3 text-[11px] z-20 flex justify-between items-center w-full text-on-surface-variant opacity-70">
+          <span>OrbitCore · Focus Engine</span>
+          <span className={`font-bold ${isFocusActive ? "text-tertiary" : "text-on-surface-variant"}`}>
+            {isFocusActive ? "⬤ Focus Active" : "○ Standby"}
+          </span>
         </footer>
 
         {toast.show && (
-          <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-lg text-xs font-semibold border backdrop-blur-md animate-fade-in ${
+          <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-lg text-xs font-semibold backdrop-blur-md animate-fade-in ${
             toast.type === "success" 
-              ? "bg-primary-container text-on-primary-container border-primary" 
-              : "bg-error-container text-on-error-container border-error"
+              ? "bg-primary-container text-on-primary-container" 
+              : "bg-error-container text-on-error-container"
           }`}>
             {toast.message}
           </div>

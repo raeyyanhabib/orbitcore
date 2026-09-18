@@ -89,18 +89,26 @@ src/preload/preload.js
 
 
 ================================================================================
-  LAYER 3 — REACT RENDERER & COMPONENTS
+  LAYER 3 — REACT RENDERER, THEMES & COMPONENTS
 ================================================================================
 
 src/renderer/main.jsx
   ROLE: React DOM entry point. Mounts <App /> into index.html #root.
 
+src/renderer/themes.js
+  ROLE: Color Theme System configuration module.
+  OWNS: 6 synchronized color palettes (3 Dark: deep-teal, dark-purple, dark-orange; 3 Light: light-teal, light-purple, light-orange).
+
+src/renderer/hooks/useTheme.js
+  ROLE: Custom React hook for dynamic theme management and localStorage persistence (`orbitcore-theme-name`).
+
 src/renderer/App.jsx
   ROLE: Root component. Owns global state, hash routing mode initialization,
-        and tab navigation.
+        theme management hook, and tab navigation.
   STATE OWNED:
     - currentMode        "dashboard" | "orbit" (initialized via window.location.hash === "#orbit")
     - activeTab          "tasks" | "analytics" | "settings"
+    - themeName          "dark-teal" | "dark-purple" | "dark-orange" | "light-teal" | "light-purple" | "light-orange"
     - taskList[]         all tasks from SQLite
     - activeTask         currently focused task object
     - settings{}         key-value map from DB settings table
@@ -109,17 +117,16 @@ src/renderer/App.jsx
     - monitorUpdate      last Python monitor-update payload
     - todayFocusSeconds  accumulated from monitor-update isOnTask ticks
     - analyticsData      heatmap, top tasks, streak, and focus ratio from DB
-    - theme              "dark" | "light"
   COMPONENTS RENDERED:
     - DashboardView.jsx   (Tasks tab & detail panel)
     - OrbitView.jsx       (Ultra-minimalist 30 FPS Three.js desktop widget)
     - AnalyticsView.jsx   (30-day productivity heatmap & focus distribution)
-    - SettingsView.jsx    (Preferences, Orbit sliders, CSV/JSON export)
+    - SettingsView.jsx    (Theme selector, Preferences, Orbit sliders, CSV/JSON export)
     - RemindersOverlay.jsx (Side-notification motivational system)
     - FirstRunModal.jsx   (Onboarding modal on initial launch)
 
 src/renderer/components/CollapsiblePanel.jsx
-  ROLE: Reusable collapsible panel card wrapper with title, icon, badge, and local storage state persistence.
+  ROLE: Reusable collapsible panel card wrapper using theme-aware surface CSS variables.
 
 src/renderer/components/DashboardView.jsx
   ROLE: Task management view.
@@ -133,9 +140,11 @@ src/renderer/components/DashboardView.jsx
 src/renderer/components/OrbitView.jsx
   ROLE: Ultra-minimalist 30 FPS Three.js solar system desktop widget.
   FEATURES:
-    - 3D Sun, orbital rings, priority-scaled colorful planet meshes, and starfield.
-    - Throttled 30 FPS render loop for low CPU/GPU footprint.
-    - High-visibility drag handle bar with high-contrast `[← Exit Orbit]` button (`-webkit-app-region: no-drag`).
+    - 3D Sun with multi-layer glowing aura corona shader.
+    - High-priority tasks render as planets with Saturn-like planetary rings.
+    - Raycasted hover tooltips displaying task title and priority badge.
+    - Throttled 30 FPS render loop for minimal CPU/GPU utilization.
+    - Transparent top bar with high-visibility `[← Exit Orbit]` button (`-webkit-app-region: no-drag`).
 
 src/renderer/components/AnalyticsView.jsx
   ROLE: Productivity metrics and visual reports.
@@ -147,8 +156,9 @@ src/renderer/components/AnalyticsView.jsx
     - Export Logs CSV button.
 
 src/renderer/components/SettingsView.jsx
-  ROLE: System preferences and Orbit widget configuration.
+  ROLE: System preferences, color theme selection, and Orbit widget configuration.
   FEATURES:
+    - Interactive Color Themes grid with swatch previews (3 dark + 3 light palettes).
     - Orbit Sun Size, Planet Scale, and Widget Opacity sliders.
     - Hover Mode default toggle.
     - User Profile occupation setting (customizes DuckDuckGo research).
