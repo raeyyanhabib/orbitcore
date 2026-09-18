@@ -182,10 +182,13 @@ def exportLogsToCSV(connection, csvFilePath):
             ])
 
 
-def createNewTask(connection, title, description="", notes="", priority="Medium", tags="[]", taskType="One-Time", intervalDays=1, targetApps="", color=None, deadline=None):
+def createNewTask(connection, title, description="", notes="", priority="Medium", tags="[]", taskType="One-Time", intervalDays=1, targetApps="", color=None, deadline=None, due_date=None):
     """
     Performs server-side title validation and inserts a new task row into SQLite.
     """
+    if not deadline and due_date:
+        deadline = due_date
+
     # Ensure task title contains non-whitespace text before persisting.
     if not title or not title.strip():
         # Raise value error to prevent invalid empty task insertions.
@@ -230,6 +233,26 @@ def getUpcomingDeadlines(connection, minutesAhead=60):
     """)
     rows = cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+def getTaskTimeBreakdown(connection, taskId):
+    """
+    Aggregates total time logs (on-task vs off-task) for a single specific task.
+    """
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT 
+            SUM(CASE WHEN is_on_task = 1 THEN duration_seconds ELSE 0 END) as on_task_seconds,
+            SUM(CASE WHEN is_on_task = 0 THEN duration_seconds ELSE 0 END) as off_task_seconds
+        FROM time_logs
+        WHERE task_id = ?
+    """, (taskId,))
+    row = cursor.fetchone()
+    return {
+        "taskId": taskId,
+        "onTaskSeconds": (row["on_task_seconds"] or 0) if row else 0,
+        "offTaskSeconds": (row["off_task_seconds"] or 0) if row else 0
+    }
 
 
 def getAllTasks(connection):
@@ -425,26 +448,46 @@ def getAnalytics(connection, dayRange=7):
             else:
                 break
     
-    # 4. Get heatmap data (hours worked per day of week)
+    # 4. Get heatmap data (hours worked per day for the last 30 days)
+    from datetime import datetime as dt, timedelta
+    todayDate = dt.now().date()
+    
     cursor.execute("""
         SELECT 
-            CAST(strftime('%w', timestamp) AS INTEGER) as day_of_week,
+            DATE(timestamp) as work_date,
             SUM(duration_seconds) / 3600.0 as hours_worked
         FROM time_logs
-        WHERE is_on_task = 1
-        GROUP BY day_of_week
+        WHERE is_on_task = 1 AND timestamp >= datetime('now', '-30 days')
+        GROUP BY work_date
     """)
-    
     heatmapRows = cursor.fetchall()
-    dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    heatmapData = {dayNames[row["day_of_week"]]: row["hours_worked"] for row in heatmapRows}
+    workMap = {row["work_date"]: row["hours_worked"] for row in heatmapRows}
+    
+    heatMapList = []
+    for i in range(29, -1, -1):
+        targetDate = todayDate - timedelta(days=i)
+        dateStr = targetDate.strftime("%Y-%m-%d")
+        hours = round(workMap.get(dateStr, 0.0), 1)
+        intensity = 0
+        if hours >= 4.0:
+            intensity = 3
+        elif hours >= 2.0:
+            intensity = 2
+        elif hours > 0.0:
+            intensity = 1
+            
+        heatMapList.append({
+            "date": targetDate.strftime("%b %d"),
+            "hours": hours,
+            "intensity": intensity
+        })
     
     return {
         "onTaskSeconds": onTaskSeconds,
         "offTaskSeconds": offTaskSeconds,
         "taskTimeData": taskTimeData,
         "streak": streak,
-        "heatmapData": heatmapData
+        "heatMap": heatMapList
     }
 
 

@@ -546,6 +546,11 @@ def handleIncomingActions():
                 # Emit research-complete payload if cache exists
                 if tips:
                     sendToElectron("research-complete", {"taskId": taskId, "tips": tips})
+
+            elif action == "getTaskTimeBreakdown":
+                taskId = int(payload.get("taskId"))
+                breakdown = db.getTaskTimeBreakdown(connection, taskId)
+                sendToElectron("task-time-breakdown", breakdown)
                     
             elif action == "exportLogs":
                 # Export time logging statistics to CSV

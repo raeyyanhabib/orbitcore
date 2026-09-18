@@ -25,6 +25,10 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
     window.electronAPI.sendTaskAction("set-orbit-opacity", { opacity: val });
   };
 
+  const handleExportLogs = () => {
+    window.electronAPI.sendTaskAction("exportLogs");
+  };
+
   return (
     <div className="w-full h-full pb-12 overflow-y-auto max-h-[calc(100vh-100px)] custom-scrollbar pr-2">
       {/* Title */}
@@ -39,30 +43,80 @@ export default function SettingsView({ settings, theme, toggleTheme }) {
           
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">public</span>
-            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Orbit Widget Preferences</h3>
+            <h3 className="text-headline-md font-headline-md font-semibold text-on-surface">Orbit Mode Preferences</h3>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
               <div>
-                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Widget Opacity</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Adjust translucency of the mini desktop widget ({Math.round((localSettings.orbitOpacity || 0.75) * 100)}%).</p>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Sun Size</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Central core scale ({localSettings.orbitSunSize || 100}%).</p>
               </div>
               <input 
                 type="range"
-                min="0.4"
-                max="0.95"
-                step="0.05"
-                className="w-32 accent-primary cursor-pointer"
-                value={localSettings.orbitOpacity || 0.75}
-                onChange={(e) => handleOpacityChange(e.target.value)}
+                min="50"
+                max="200"
+                step="10"
+                className="w-24 accent-primary cursor-pointer"
+                value={localSettings.orbitSunSize || 100}
+                onChange={(e) => updateSetting("orbitSunSize", e.target.value)}
               />
             </div>
 
             <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
               <div>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Planet Scale</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Task planets scale ({localSettings.orbitPlanetSize || 1}x).</p>
+              </div>
+              <input 
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                className="w-24 accent-primary cursor-pointer"
+                value={localSettings.orbitPlanetSize || 1}
+                onChange={(e) => updateSetting("orbitPlanetSize", e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+              <div>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Widget Opacity</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Translucency ({Math.round((localSettings.orbitOpacity || 0.75) * 100)}%).</p>
+              </div>
+              <input 
+                type="range"
+                min="0.3"
+                max="1.0"
+                step="0.05"
+                className="w-24 accent-primary cursor-pointer"
+                value={localSettings.orbitOpacity || 0.75}
+                onChange={(e) => handleOpacityChange(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t border-outline/10">
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+              <div>
+                <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Display Mode</h4>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Window positioning style in Orbit Mode.</p>
+              </div>
+              <select 
+                value={localSettings.orbitDisplayMode || "overlay"}
+                onChange={(e) => updateSetting("orbitDisplayMode", e.target.value)}
+                className="bg-surface-container border border-outline/20 text-on-surface text-label-md rounded-lg p-2 focus:border-primary focus:outline-none transition-colors cursor-pointer"
+              >
+                <option value="overlay">Transparent Overlay (Always on Top)</option>
+                <option value="floating">Floating Window (Resizable)</option>
+                <option value="pinned">Desktop Pinned (Behind Windows)</option>
+              </select>
+            </div>
+
+            <div className="flex justify-between items-center bg-surface p-4 rounded-xl border border-outline/10">
+              <div>
                 <h4 className="text-body-lg font-label-md font-semibold text-on-surface">Always On Top (Hover Mode)</h4>
-                <p className="text-label-sm font-label-sm text-on-surface-variant">Default state when switching to Orbit Mode.</p>
+                <p className="text-label-sm font-label-sm text-on-surface-variant">Keep Orbit widget floating over active apps.</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 

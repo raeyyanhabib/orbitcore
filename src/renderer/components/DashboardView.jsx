@@ -6,8 +6,13 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
   const [taskType, setTaskType] = useState("One-Time");
   const [taskPriority, setTaskPriority] = useState("Medium");
   const [taskDeadline, setTaskDeadline] = useState("");
+  const [taskTags, setTaskTags] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterPriority, setFilterPriority] = useState("");
+  const [sortBy, setSortBy] = useState("created");
   const [selectedTask, setSelectedTask] = useState(null); // For Task Details view
   const [researchTips, setResearchTips] = useState(null);
+  const [taskTimeBreakdown, setTaskTimeBreakdown] = useState(null);
   
   const [editingTargetApps, setEditingTargetApps] = useState(false);
   const [editTargetAppsValue, setEditTargetAppsValue] = useState("");
@@ -26,6 +31,12 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
         setResearchTips(data.tips);
       }
     });
+
+    window.electronAPI.onReceiveFromMain("task-time-breakdown", (data) => {
+      if (selectedTask && data.taskId === selectedTask.id) {
+        setTaskTimeBreakdown(data);
+      }
+    });
   }, [selectedTask]);
 
   const handleCreateTask = (e) => {
@@ -39,6 +50,8 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
     if (taskPriority === "High") color = "#FF0000";
     else if (taskPriority === "Low") color = "#FFFF00";
 
+    const parsedTags = taskTags ? JSON.stringify(taskTags.split(',').map(t => t.trim()).filter(Boolean)) : "[]";
+
     const payload = {
       title: taskTitle.trim(),
       description: "",
@@ -47,7 +60,7 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
       targetApps: "",
       color: color,
       intervalDays: 1,
-      tags: "[]",
+      tags: parsedTags,
       notes: "",
       deadline: taskDeadline || null
     };
@@ -64,6 +77,7 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
     setTaskPriority("Medium");
     setTaskType("One-Time");
     setTaskDeadline("");
+    setTaskTags("");
   };
 
   const handleCompleteTask = (taskId) => {
@@ -91,7 +105,9 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
   const openTaskDetails = (task) => {
     setSelectedTask(task);
     setResearchTips(null);
+    setTaskTimeBreakdown(null);
     window.electronAPI.sendTaskAction("getResearch", { taskId: task.id });
+    window.electronAPI.sendTaskAction("getTaskTimeBreakdown", { taskId: task.id });
   };
 
   // If a task is selected, show the Task Details view
@@ -265,6 +281,34 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                     />
                   )}
                 </div>
+
+                <div>
+                  <label className="text-label-sm font-label-sm text-on-surface-variant block mb-1">Time Tracked</label>
+                  {taskTimeBreakdown ? (
+                    <div className="bg-surface p-3 rounded-lg border border-outline/20 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-tertiary font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-tertiary"></span> Focused:
+                        </span>
+                        <span className="font-mono text-on-surface font-semibold">
+                          {Math.floor(taskTimeBreakdown.onTaskSeconds / 60)}m {taskTimeBreakdown.onTaskSeconds % 60}s
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-error font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-error"></span> Off-Task:
+                        </span>
+                        <span className="font-mono text-on-surface font-semibold">
+                          {Math.floor(taskTimeBreakdown.offTaskSeconds / 60)}m {taskTimeBreakdown.offTaskSeconds % 60}s
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-surface p-3 rounded-lg border border-outline/20 text-xs text-on-surface-variant italic">
+                      Fetching focus metrics...
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -295,6 +339,38 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
     }
   };
 
+  const renderTags = (tagsStr) => {
+    if (!tagsStr) return null;
+    try {
+      const arr = JSON.parse(tagsStr);
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      return arr.map((tag, idx) => (
+        <span key={idx} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono">
+          #{tag}
+        </span>
+      ));
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const filteredTasks = taskList
+    .filter(t => !t.is_completed)
+    .filter(t => searchTerm === "" || t.title.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(t => filterPriority === "" || t.priority === filterPriority)
+    .sort((a, b) => {
+      if (sortBy === "priority") {
+        const pMap = { High: 3, Medium: 2, Low: 1 };
+        return (pMap[b.priority] || 0) - (pMap[a.priority] || 0);
+      }
+      if (sortBy === "dueDate") {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline) - new Date(b.deadline);
+      }
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+
   // Dashboard View Main
   return (
     <div className="w-full h-full pb-8">
@@ -322,8 +398,8 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                 />
               </div>
 
-              {/* Row 2: Deadline, Priority, Type, and Submit */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+              {/* Row 2: Deadline, Tags, Priority, Type, and Submit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-center">
                 <div>
                   <input 
                     type="datetime-local" 
@@ -331,6 +407,15 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                     className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors cursor-pointer text-xs"
                     value={taskDeadline}
                     onChange={(e) => setTaskDeadline(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <input 
+                    type="text" 
+                    placeholder="Tags (coding, study...)" 
+                    className="w-full bg-surface border border-outline/20 text-on-surface font-label-md rounded-xl px-3 py-2.5 focus:outline-none focus:border-primary transition-colors text-xs"
+                    value={taskTags}
+                    onChange={(e) => setTaskTags(e.target.value)}
                   />
                 </div>
                 <div>
@@ -370,15 +455,45 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
 
           {/* Task List Panel */}
           <CollapsiblePanel title="Active Tasks" icon="task_alt" badge={taskList.filter(t => !t.is_completed).length}>
+            {/* Search, Filter & Sort Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <input 
+                type="text" 
+                placeholder="Search active tasks..." 
+                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <select 
+                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary cursor-pointer"
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+              >
+                <option value="">All Priorities</option>
+                <option value="High">Priority: High</option>
+                <option value="Medium">Priority: Medium</option>
+                <option value="Low">Priority: Low</option>
+              </select>
+              <select 
+                className="bg-surface border border-outline/20 rounded-xl px-3 py-2 text-xs text-on-surface focus:outline-none focus:border-primary cursor-pointer"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="created">Sort: Most Recent</option>
+                <option value="priority">Sort: Priority</option>
+                <option value="dueDate">Sort: Due Date</option>
+              </select>
+            </div>
+
             <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[450px]">
-              {taskList.filter(t => !t.is_completed).length === 0 ? (
+              {filteredTasks.length === 0 ? (
                 <div className="w-full h-full flex flex-col items-center justify-center text-on-surface-variant p-8">
                   <span className="material-symbols-outlined text-4xl mb-3 opacity-50">done_all</span>
-                  <p className="text-body-md text-center">No active tasks. Add a task above to start tracking.</p>
+                  <p className="text-body-md text-center">No matching tasks found.</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2.5">
-                  {taskList.filter(t => !t.is_completed).map((task) => {
+                  {filteredTasks.map((task) => {
                     const isActive = activeTask && activeTask.id === task.id;
                     return (
                       <div 
@@ -398,6 +513,7 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                                 <span className="w-1 h-1 rounded-full bg-on-surface-variant/40"></span> {task.type}
                               </span>
                               {renderDeadlineBadge(task.deadline)}
+                              {renderTags(task.tags)}
                             </div>
                           </div>
                         </div>

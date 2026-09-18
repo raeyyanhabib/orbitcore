@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "exportSettings",
       "getFocusMessages",
       "toggle-orbit-hover",
-      "set-orbit-opacity"
+      "set-orbit-opacity",
+      "getTaskTimeBreakdown"
     ];
 
     // Check if the requested action is present in the whitelisted allowedActions array.
@@ -59,7 +60,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "monitor-status",
       "heartbeat",
       "analytics-data",
-      "deadline-reminder"
+      "deadline-reminder",
+      "task-time-breakdown"
     ];
 
     // Verify if the channel is whitelisted.

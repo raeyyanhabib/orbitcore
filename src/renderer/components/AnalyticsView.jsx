@@ -38,6 +38,11 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
     }
   };
 
+  const onTaskSec = analyticsData?.onTaskSeconds || 0;
+  const offTaskSec = analyticsData?.offTaskSeconds || 0;
+  const totalSec = onTaskSec + offTaskSec;
+  const onTaskPct = totalSec > 0 ? Math.round((onTaskSec / totalSec) * 100) : 100;
+
   return (
     <div className="w-full h-full pb-8">
       {/* Title */}
@@ -126,7 +131,7 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
                     className={`aspect-square rounded-md ${getHeatMapColor(day.intensity)} transition-all hover:scale-110 hover:shadow-lg cursor-pointer group relative`}
                   >
                     <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-surface text-on-surface text-[10px] px-2 py-1 rounded border border-outline/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                      Day {day.date}: {day.intensity * 2} hrs
+                      {day.date}: {day.hours ?? (day.intensity * 2)} hrs
                     </div>
                   </div>
                 ))}
@@ -169,6 +174,38 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
                 );
               })
             )}
+          </div>
+        </div>
+
+        {/* Focus Efficiency (On-Task vs Off-Task) Panel */}
+        <div className="lg:col-span-3 bg-surface-container rounded-2xl border border-outline/20 p-card-padding flex flex-col">
+          <h3 className="text-headline-md font-headline-md font-semibold text-on-surface mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">pie_chart</span>
+            Focus Time Distribution (On-Task vs Off-Task)
+          </h3>
+
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-surface p-6 rounded-xl border border-outline/10">
+            <div className="flex flex-col items-center md:items-start space-y-1">
+              <span className="text-label-sm text-on-surface-variant uppercase font-bold tracking-wider">Overall Focus Ratio</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-display-md font-extrabold text-tertiary">{onTaskPct}%</span>
+                <span className="text-body-md text-on-surface-variant font-medium">On-Task</span>
+              </div>
+            </div>
+
+            <div className="flex-1 w-full space-y-3">
+              <div className="flex justify-between text-xs font-bold font-mono">
+                <span className="text-tertiary">Focused: {Math.round(onTaskSec / 60)} mins</span>
+                <span className="text-error">Distracted: {Math.round(offTaskSec / 60)} mins</span>
+              </div>
+              <div className="w-full bg-error/30 rounded-full h-4 overflow-hidden border border-outline/20 flex">
+                <div 
+                  className="bg-tertiary h-full transition-all duration-500 rounded-l-full" 
+                  style={{ width: `${onTaskPct}%` }}
+                  title={`On-Task: ${onTaskPct}%`}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
 

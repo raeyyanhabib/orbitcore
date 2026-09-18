@@ -173,6 +173,7 @@ export default function App() {
           monitorUpdate={monitorUpdate}
           isFocusActive={isFocusActive}
           focusMessages={focusMessages}
+          settings={settings}
           onBackToDashboard={() => handleModeTransition("dashboard")}
         />
         {toast.show && (
