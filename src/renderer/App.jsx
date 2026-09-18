@@ -7,6 +7,7 @@ import OrbitView from "./components/OrbitView.jsx";
 import AnalyticsView from "./components/AnalyticsView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import FirstRunModal from "./components/FirstRunModal.jsx";
+import RemindersOverlay from "./components/RemindersOverlay.jsx";
 
 export default function App() {
   const initialMode = window.location.hash === "#orbit" ? "orbit" : "dashboard";
@@ -295,6 +296,9 @@ export default function App() {
         {showFirstRunModal && (
           <FirstRunModal onComplete={() => setShowFirstRunModal(false)} />
         )}
+
+        {/* Motivational Reminders Overlay */}
+        <RemindersOverlay />
       </main>
     </div>
   );
