@@ -63,11 +63,18 @@ All major milestones, UI/UX refinements, 3D Solar Orbit View upgrades, 6-variant
    - INT8 tick random timer scheduler (`5–17.75 min` intervals).
    - WhatsApp/Windows-style alert sliding in from right side with auto-dismiss progress bar (`RemindersOverlay.jsx`).
 
-10. [Settings & Customization]
-    - Interactive Theme Selector grid with live color swatch previews.
-    - Orbit Sun size, Planet scale, and Widget opacity sliders.
-    - User occupation setting (customizes web research).
-    - Settings JSON export & import file dialogs.
+11. [Focus App Selection & Process Scanner]
+    - Dynamic active window process scanner using Windows `tasklist /fo csv /nh`.
+    - Whitelist vs Blacklist AppSelectionModal allowing users to pick allowed or blocked apps per focus mission.
+
+12. [DuckDuckGo Web Research Engine]
+    - Asynchronous DuckDuckGo search integration (`duckduckgo_search` DDGS library) in Python backend.
+    - Generates actionable study tips, best practices, and common mistakes tailored to user occupation.
+
+13. [Performance & Fast Startup Optimizations]
+    - Optimized SQLite task fetching (`WHERE is_completed = 0 LIMIT 100`) for instantaneous app cold starts.
+    - Lazy-loaded analytics queries (500ms delay) and React skeleton loading placeholders.
+    - Windows native desktop Z-ordering (`HWND_BOTTOM`) for pinned Orbit mode.
 
 ================================================================================
                              VERIFICATION RESULTS

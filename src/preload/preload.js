@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "getFocusMessages",
       "toggle-orbit-hover",
       "set-orbit-opacity",
+      "set-orbit-display-mode",
+      "getRunningApps",
       "getTaskTimeBreakdown"
     ];
 
@@ -61,6 +63,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "heartbeat",
       "analytics-data",
       "deadline-reminder",
+      "running-apps",
       "task-time-breakdown"
     ];
 

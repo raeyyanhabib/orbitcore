@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsData, triggerToast }) {
+export default function AnalyticsView({ taskList, analyticsLoading, todayFocusSeconds, analyticsData, triggerToast }) {
   const [exporting, setExporting] = useState(false);
 
   // Compute real stats
@@ -42,6 +42,27 @@ export default function AnalyticsView({ taskList, todayFocusSeconds, analyticsDa
   const offTaskSec = analyticsData?.offTaskSeconds || 0;
   const totalSec = onTaskSec + offTaskSec;
   const onTaskPct = totalSec > 0 ? Math.round((onTaskSec / totalSec) * 100) : 100;
+
+  if (analyticsLoading) {
+    return (
+      <div className="w-full h-full pb-8">
+        <div className="flex justify-between items-center mb-8 mt-2">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-1 h-6 rounded-full" style={{ background: "var(--primary)" }} />
+              <h2 className="text-2xl font-extrabold tracking-tight text-on-surface" style={{ letterSpacing: "-0.03em" }}>Analytics</h2>
+            </div>
+            <p className="text-sm pl-4 text-on-surface-variant">Review your focus metrics and activity history.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter auto-rows-max max-w-7xl">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-2xl p-card-padding h-40 bg-surface-container animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full pb-8">

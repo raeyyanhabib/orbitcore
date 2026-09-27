@@ -107,9 +107,9 @@ def performWebResearch(taskId, taskTitle, taskDescription=""):
     """
     Asynchronously queries DuckDuckGo for general advice on the task.
     Enhances search queries using user profile context (occupation) from SQLite settings.
-    Saves a formatted JSON structure (Summary, Tips, Best Practices, Mistakes) to database.
+    Saves a formatted JSON structure (summary, actionableTips[], bestPractices[], commonMistake) to database.
     """
-    writeToLog("INFO", f"Triggering web research for task: {taskTitle}")
+    writeToLog("INFO", f"Triggering web research for task: '{taskTitle}'")
     
     # 1. Construct search terms with user occupation context if available
     userOccupation = ""
@@ -118,32 +118,34 @@ def performWebResearch(taskId, taskTitle, taskDescription=""):
         settingsMap = db.getSettings(conn)
         conn.close()
         userOccupation = settingsMap.get("userOccupation", "")
-    except Exception:
-        pass
+    except Exception as e:
+        writeToLog("WARNING", f"Could not read userOccupation for research: {str(e)}")
 
-    searchQuery = f"how to study or work on {taskTitle}"
+    searchQuery = f"how to {taskTitle}"
     if userOccupation:
         occLower = userOccupation.lower().strip()
         if occLower == "student":
-            searchQuery += " for students"
+            searchQuery += " study tips for students"
         elif occLower == "professional":
-            searchQuery += " professionally"
+            searchQuery += " best practices for professionals"
         elif occLower == "freelancer":
-            searchQuery += " as freelancer"
+            searchQuery += " workflow for freelancers"
         else:
             searchQuery += f" for {userOccupation}"
 
     if taskDescription:
         searchQuery += f" {taskDescription}"
-        
+
+    # Default fallback tips structure
     tipsResult = {
         "summary": f"Tips and best practices for completing '{taskTitle}'.",
         "actionableTips": [
             "Break the goal down into 15-minute sub-tasks.",
-            "Minimize phone alerts and desktop distractions before starting."
+            "Minimize phone alerts and desktop distractions before starting.",
+            "Set a clear definition of done for this session."
         ],
         "bestPractices": [
-            "Use active recall or focused coding sprints.",
+            "Use active recall or focused coding/work sprints.",
             "Take 5-minute physical breaks between deep focus blocks."
         ],
         "commonMistake": "Overestimating progress during the first hour and losing momentum."
@@ -158,23 +160,44 @@ def performWebResearch(taskId, taskTitle, taskDescription=""):
                 ddgs = DDGS()
                 searchResults = list(ddgs.text(searchQuery, max_results=3))
             except Exception:
-                # Fallback to v3 syntax if older package is installed
-                with DDGS() as ddgs:
-                    searchResults = list(ddgs.text(searchQuery, max_results=3))
+                try:
+                    # Fallback to v3 syntax if older package is installed
+                    with DDGS() as ddgs:
+                        searchResults = list(ddgs.text(searchQuery, max_results=3))
+                except Exception as innerErr:
+                    writeToLog("WARNING", f"DuckDuckGo search execution error: {str(innerErr)}")
             
             if searchResults:
-                writeToLog("INFO", f"DuckDuckGo search successful for: {taskTitle}")
-                # Collect summaries from top search outputs to present to user
-                lines = [result.get("body", "") for result in searchResults if result.get("body")]
-                if lines:
-                    tipsResult["summary"] = f"Top research advice: {lines[0][:150]}..."
-                    # Populate tips from remaining results
-                    for index, line in enumerate(lines[:2]):
-                        tipsResult["actionableTips"][index] = line[:80] + "..."
+                writeToLog("INFO", f"DuckDuckGo search successful for: '{taskTitle}' ({len(searchResults)} results)")
+                snippets = [r.get("body", "").strip() for r in searchResults if r.get("body")]
+                titles = [r.get("title", "").strip() for r in searchResults if r.get("title")]
+
+                if snippets:
+                    tipsResult["summary"] = f"DuckDuckGo Insights: {snippets[0][:180]}..."
+                    
+                    actionable = []
+                    for snip in snippets[:3]:
+                        clean_snip = snip.replace("\n", " ")
+                        if len(clean_snip) > 120:
+                            clean_snip = clean_snip[:117] + "..."
+                        actionable.append(clean_snip)
+                    
+                    if actionable:
+                        tipsResult["actionableTips"] = actionable
+
+                    if len(snippets) > 1:
+                        tipsResult["bestPractices"] = [
+                            f"Key focus: {titles[1]}" if len(titles) > 1 else snippets[1][:100],
+                            snippets[1][:110] + "..."
+                        ]
+                    if len(snippets) > 2:
+                        tipsResult["commonMistake"] = f"Watch out for: {snippets[2][:130]}..."
         except Exception as error:
             writeToLog("WARNING", f"DuckDuckGo search failed or offline: {str(error)}")
+    else:
+        writeToLog("INFO", "duckduckgo_search library not installed. Using fallback research tips.")
 
-    # 3. Cache the research tips to SQLite
+    # 3. Cache the research tips to SQLite & broadcast
     try:
         connection = db.getDatabaseConnection(dbFilePath)
         db.saveWebResearch(connection, taskId, tipsResult)
@@ -182,6 +205,7 @@ def performWebResearch(taskId, taskTitle, taskDescription=""):
         
         # Send confirmation update back to React
         sendToElectron("research-complete", {"taskId": taskId, "tips": tipsResult})
+        writeToLog("INFO", f"Research complete and broadcast for taskId: {taskId}")
     except Exception as error:
         writeToLog("ERROR", f"Failed to save research results to SQLite: {str(error)}")
 

@@ -134,8 +134,15 @@ src/renderer/components/DashboardView.jsx
     - Collapsible Create Task panel (Title, Due Date, Tags, Priority, Type)
     - Active Tasks panel with search, priority filter, sort options (created, priority, dueDate)
     - Task items render deadline badges (Overdue, Due in Xh) and tag chips (#tag)
+    - Integrated AppSelectionModal for selecting focus apps before starting focus sessions
     - Task Details view: DuckDuckGo research tips and task focus time breakdown (On-Task vs Off-Task)
     - Daily Insights panel
+
+src/renderer/components/AppSelectionModal.jsx
+  ROLE: App selection modal for defining allowed/blocked apps during a focus session.
+  FEATURES:
+    - Scans active system processes via `getRunningApps` IPC call
+    - Supports Whitelist (allowed apps) and Blacklist (blocked apps) filter modes
 
 src/renderer/components/OrbitView.jsx
   ROLE: Ultra-minimalist 30 FPS Three.js solar system desktop widget.

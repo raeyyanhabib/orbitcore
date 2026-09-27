@@ -13,8 +13,8 @@ import THEMES from "./themes";
 
 export default function App() {
   const initialMode = window.location.hash === "#orbit" ? "orbit" : "dashboard";
-  const [currentMode, setCurrentMode] = useState(initialMode); // 'dashboard' | 'orbit'
-  const [activeTab, setActiveTab] = useState("tasks"); // 'tasks' | 'analytics' | 'settings'
+  const [currentMode, setCurrentMode] = useState(initialMode);
+  const [activeTab, setActiveTab] = useState("tasks");
   const [taskList, setTaskList] = useState([]);
   const [activeTask, setActiveTask] = useState(null);
   const [settings, setSettings] = useState({});
@@ -26,12 +26,21 @@ export default function App() {
   const [toast, setToast] = useState({ show: false, type: "success", message: "" });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [showFirstRunModal, setShowFirstRunModal] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Theme Hook Integration
   const [themeName, setThemeName] = useState("dark-teal");
   const { applyTheme } = useTheme(themeName, setThemeName);
   const currentTheme = THEMES[themeName] || THEMES["dark-teal"];
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitializing(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleThemeMode = () => {
     if (currentTheme.mode === "dark") {
@@ -54,6 +63,7 @@ export default function App() {
     window.electronAPI.onReceiveFromMain("tasks-list", (tasks) => {
       console.log("📥 Received tasks-list:", tasks);
       setTaskList(tasks);
+      setTasksLoading(false);
       
       setActiveTask(prev => {
         if (!prev) return null;
@@ -124,6 +134,7 @@ export default function App() {
 
     window.electronAPI.onReceiveFromMain("analytics-data", (data) => {
       setAnalyticsData(data);
+      setAnalyticsLoading(false);
     });
 
     window.electronAPI.onReceiveFromMain("deadline-reminder", (data) => {
@@ -136,10 +147,16 @@ export default function App() {
       }
     });
 
+    // Critical data on startup
     window.electronAPI.sendTaskAction("getAllTasks");
     window.electronAPI.sendTaskAction("getSettings");
     window.electronAPI.sendTaskAction("getFocusMessages");
-    window.electronAPI.sendTaskAction("getAnalytics", { dayRange: 7 });
+
+    // Lazy-load analytics after 500ms
+    setTimeout(() => {
+      setAnalyticsLoading(true);
+      window.electronAPI.sendTaskAction("getAnalytics", { dayRange: 7 });
+    }, 500);
   }, []);
 
   useEffect(() => {
@@ -161,11 +178,26 @@ export default function App() {
     window.electronAPI.sendTaskAction("changeMode", { mode: targetMode });
   };
 
+  if (isInitializing) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-background text-on-background select-none animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 pulse-glow" style={{ background: "var(--primary-container)" }}>
+          <span className="material-symbols-outlined text-4xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
+            rocket_launch
+          </span>
+        </div>
+        <h1 className="text-xl font-black tracking-tight text-primary mb-1">OrbitCore</h1>
+        <p className="text-xs text-on-surface-variant font-mono animate-pulse">Initializing Focus Engine...</p>
+      </div>
+    );
+  }
+
   if (currentMode === "orbit") {
     return (
       <div className="relative w-screen h-screen bg-transparent overflow-hidden">
         <OrbitView 
           taskList={taskList}
+          settings={settings}
           onBackToDashboard={() => handleModeTransition("dashboard")}
         />
         {toast.show && (
@@ -183,7 +215,6 @@ export default function App() {
 
   return (
     <div className="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden flex">
-      {/* SideNavBar — Theme Matched */}
       <nav 
         className={`fixed left-0 top-0 h-full z-40 flex flex-col w-[220px] transition-transform duration-300 ${
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
@@ -193,7 +224,6 @@ export default function App() {
           borderRight: `1px solid var(--outline-variant)`
         }}
       >
-        {/* Logo */}
         <div className="flex items-center gap-3 px-5 pt-6 pb-5">
           <div 
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 pulse-glow"
@@ -209,7 +239,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Nav Items */}
         <ul className="flex flex-col gap-1 px-3 py-4 flex-grow">
           {[
             { tab: "tasks",     icon: "grid_view",     label: "Dashboard" },
@@ -240,7 +269,6 @@ export default function App() {
             </li>
           ))}
 
-          {/* Orbit Mode — special CTA */}
           <li className="mt-3">
             <button
               onClick={() => handleModeTransition("orbit")}
@@ -257,7 +285,6 @@ export default function App() {
           </li>
         </ul>
 
-        {/* Bottom: Monitor status + theme toggle */}
         <div className="px-4 pb-5 pt-4">
           <div className="flex items-center gap-2 mb-3">
             <span className={`w-1.5 h-1.5 rounded-full ${monitorStatus === 'connected' ? 'bg-tertiary' : 'bg-error'}`} />
@@ -277,18 +304,14 @@ export default function App() {
           </button>
         </div>
 
-        {/* Mobile close */}
         <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden mx-4 mb-4 bg-surface-variant text-on-surface rounded-xl py-2.5 px-4 flex items-center justify-center gap-2 text-sm font-semibold transition-all">
           Close
         </button>
       </nav>
 
-      {/* Main Content Area */}
       <main className="flex-1 md:ml-[220px] relative h-screen overflow-y-auto custom-scrollbar flex flex-col w-full">
 
-        {/* Dashboard Content */}
         <div className="pt-6 px-5 sm:px-8 pb-24 max-w-[1500px] w-full mx-auto flex-1 flex flex-col">
-          {/* Mobile menu trigger */}
           <div className="md:hidden flex items-center justify-between mb-4">
             <button onClick={() => setIsMobileMenuOpen(true)} className="text-on-surface-variant hover:text-primary p-2 bg-surface-container rounded-xl transition-all flex items-center gap-2 text-sm">
               <span className="material-symbols-outlined">menu</span> Menu
@@ -299,17 +322,20 @@ export default function App() {
           {activeTab === "tasks" && (
             <DashboardView 
               taskList={taskList}
+              tasksLoading={tasksLoading}
               activeTask={activeTask}
               isFocusActive={isFocusActive}
               monitorUpdate={monitorUpdate}
               focusMessages={focusMessages}
               analyticsData={analyticsData}
+              triggerToast={triggerToast}
             />
           )}
 
           {activeTab === "analytics" && (
             <AnalyticsView 
               taskList={taskList}
+              analyticsLoading={analyticsLoading}
               todayFocusSeconds={todayFocusSeconds}
               analyticsData={analyticsData}
               triggerToast={triggerToast}
@@ -328,7 +354,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Footer */}
         <footer className="mt-auto px-8 py-3 text-[11px] z-20 flex justify-between items-center w-full text-on-surface-variant opacity-70">
           <span>OrbitCore · Focus Engine</span>
           <span className={`font-bold ${isFocusActive ? "text-tertiary" : "text-on-surface-variant"}`}>
@@ -350,7 +375,6 @@ export default function App() {
           <FirstRunModal onComplete={() => setShowFirstRunModal(false)} />
         )}
 
-        {/* Motivational Reminders Overlay */}
         <RemindersOverlay />
       </main>
     </div>

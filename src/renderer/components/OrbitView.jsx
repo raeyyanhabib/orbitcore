@@ -35,7 +35,6 @@ const PRIORITY_CONFIG = {
 };
 
 function buildStarfield(scene) {
-  // Layer 1: distant small dim stars
   const geo1 = new THREE.BufferGeometry();
   const count1 = 1400;
   const pos1 = new Float32Array(count1 * 3);
@@ -43,7 +42,6 @@ function buildStarfield(scene) {
   geo1.setAttribute("position", new THREE.BufferAttribute(pos1, 3));
   scene.add(new THREE.Points(geo1, new THREE.PointsMaterial({ size: 0.07, color: 0xaac8ee, transparent: true, opacity: 0.55 })));
 
-  // Layer 2: mid-range brighter cyan-tinted stars
   const geo2 = new THREE.BufferGeometry();
   const count2 = 500;
   const pos2 = new Float32Array(count2 * 3);
@@ -51,7 +49,6 @@ function buildStarfield(scene) {
   geo2.setAttribute("position", new THREE.BufferAttribute(pos2, 3));
   scene.add(new THREE.Points(geo2, new THREE.PointsMaterial({ size: 0.14, color: 0x6bd8cb, transparent: true, opacity: 0.35 })));
 
-  // Layer 3: close bright accent points
   const geo3 = new THREE.BufferGeometry();
   const count3 = 120;
   const pos3 = new Float32Array(count3 * 3);
@@ -66,40 +63,36 @@ function buildStarfield(scene) {
   };
 }
 
-function buildSun(scene) {
-  // Core sun sphere
+function buildSun(scene, sunSize = 1) {
   const coreMat = new THREE.MeshStandardMaterial({
     color: 0x6bd8cb,
     emissive: 0x229980,
-    emissiveIntensity: 1.2,
+    emissiveIntensity: 1.2 * sunSize,
     roughness: 0.0,
     metalness: 0.0,
   });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(2.0, 32, 32), coreMat);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(2.0 * sunSize, 32, 32), coreMat);
   scene.add(core);
 
-  // Inner halo glow (slightly larger, additive transparent sphere)
   const halo1Mat = new THREE.MeshBasicMaterial({
     color: 0x4ae0d5,
     transparent: true,
     opacity: 0.18,
     side: THREE.BackSide,
   });
-  const halo1 = new THREE.Mesh(new THREE.SphereGeometry(2.7, 32, 32), halo1Mat);
+  const halo1 = new THREE.Mesh(new THREE.SphereGeometry(2.7 * sunSize, 32, 32), halo1Mat);
   scene.add(halo1);
 
-  // Outer corona glow
   const halo2Mat = new THREE.MeshBasicMaterial({
     color: 0x00ffe0,
     transparent: true,
     opacity: 0.07,
     side: THREE.BackSide,
   });
-  const halo2 = new THREE.Mesh(new THREE.SphereGeometry(3.8, 32, 32), halo2Mat);
+  const halo2 = new THREE.Mesh(new THREE.SphereGeometry(3.8 * sunSize, 32, 32), halo2Mat);
   scene.add(halo2);
 
-  // Subtle point light at sun center for planetary lighting
-  const sunLight = new THREE.PointLight(0x88ffe8, 2.0, 80);
+  const sunLight = new THREE.PointLight(0x88ffe8, 2.0 * sunSize, 80);
   sunLight.position.set(0, 0, 0);
   scene.add(sunLight);
 
@@ -114,7 +107,6 @@ function buildOrbitRing(scene, radius) {
     points.push(new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius));
   }
   const geo = new THREE.BufferGeometry().setFromPoints(points);
-  // Dashed look via line with low opacity
   const mat = new THREE.LineBasicMaterial({
     color: 0x3a4a6a,
     transparent: true,
@@ -125,15 +117,13 @@ function buildOrbitRing(scene, radius) {
   return ring;
 }
 
-function buildPlanet(scene, task, index) {
+function buildPlanet(scene, task, index, planetScale = 1) {
   const cfg = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.Medium;
   const orbitRadius = 6.0 + index * cfg.orbitFactor;
   const startAngle = Math.random() * Math.PI * 2;
 
-  // Orbit ring
   buildOrbitRing(scene, orbitRadius);
 
-  // Planet mesh
   const planetMat = new THREE.MeshStandardMaterial({
     color: task.color ? new THREE.Color(task.color) : new THREE.Color(cfg.color),
     emissive: cfg.emissive,
@@ -143,9 +133,9 @@ function buildPlanet(scene, task, index) {
   });
   const planet = new THREE.Mesh(new THREE.SphereGeometry(cfg.size, 24, 24), planetMat);
   planet.position.set(Math.cos(startAngle) * orbitRadius, 0, Math.sin(startAngle) * orbitRadius);
+  planet.scale.multiplyScalar(planetScale);
   scene.add(planet);
 
-  // Atmosphere glow on planet
   const atmosMat = new THREE.MeshBasicMaterial({
     color: task.color ? new THREE.Color(task.color) : new THREE.Color(cfg.color),
     transparent: true,
@@ -155,11 +145,9 @@ function buildPlanet(scene, task, index) {
   const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(cfg.size * 1.35, 24, 24), atmosMat);
   planet.add(atmosphere);
 
-  // Saturn-style ring for High Priority planets
   let saturnRing = null;
   if (cfg.hasRing) {
     const ringGeo = new THREE.RingGeometry(cfg.size * 1.5, cfg.size * 2.4, 32);
-    // Rotate ring to lie flat around planet
     ringGeo.rotateX(-Math.PI / 2.8);
     const ringMat = new THREE.MeshBasicMaterial({
       color: cfg.ringColor || 0xff8888,
@@ -182,7 +170,7 @@ function buildPlanet(scene, task, index) {
   };
 }
 
-export default function OrbitView({ taskList, onBackToDashboard }) {
+export default function OrbitView({ taskList, settings = {}, onBackToDashboard }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
@@ -197,17 +185,19 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
     const width = el.clientWidth;
     const height = el.clientHeight;
 
-    // ── Scene ─────────────────────────────
+    // Get settings with defaults
+    const sunSize = parseFloat(settings.orbitSunSize || 100) / 100;
+    const planetScale = parseFloat(settings.orbitPlanetSize || 1);
+    const opacityVal = parseFloat(settings.orbitOpacity || 0.75);
+
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0x070a12);
 
-    // ── Camera ────────────────────────────
     const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
     camera.position.set(0, 20, 28);
     camera.lookAt(0, 0, 0);
 
-    // ── Renderer ──────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -216,23 +206,18 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
     el.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // ── Ambient light ─────────────────────
     scene.add(new THREE.AmbientLight(0x1a2a4a, 0.8));
 
-    // ── Starfield ─────────────────────────
     const { stars } = buildStarfield(scene);
     stars.forEach(s => scene.add(s));
     starLayersRef.current = stars;
 
-    // ── Sun ───────────────────────────────
-    const { core: sunCore, halo1, halo2 } = buildSun(scene);
+    const { core: sunCore, halo1, halo2 } = buildSun(scene, sunSize);
     sunRef.current = { core: sunCore, halo1, halo2 };
 
-    // ── Planets ───────────────────────────
     const activeTasks = taskList.filter(t => !t.is_completed);
-    planetsRef.current = activeTasks.map((task, idx) => buildPlanet(scene, task, idx));
+    planetsRef.current = activeTasks.map((task, idx) => buildPlanet(scene, task, idx, planetScale));
 
-    // ── Raycaster for hover ───────────────
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
@@ -257,8 +242,8 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
     };
 
     el.addEventListener("mousemove", handleMouseMove);
+    el.style.opacity = opacityVal;
 
-    // ── 30 FPS animation loop ─────────────
     let animId = null;
     let lastTime = 0;
     const FPS_INTERVAL = 1000 / 30;
@@ -268,7 +253,6 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
       if (now - lastTime < FPS_INTERVAL) return;
       lastTime = now;
 
-      // Sun pulse
       const pulse = 1 + Math.sin(now * 0.0015) * 0.04;
       if (sunRef.current) {
         sunRef.current.core.rotation.y += 0.004;
@@ -276,12 +260,10 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
         sunRef.current.halo2.scale.setScalar(pulse * 1.06);
       }
 
-      // Stars slow drift
       starLayersRef.current.forEach((s, i) => {
         s.rotation.y += 0.00015 * (i + 1);
       });
 
-      // Planet orbits
       planetsRef.current.forEach((p) => {
         p.angle += p.speed;
         p.mesh.position.x = Math.cos(p.angle) * p.radius;
@@ -294,7 +276,6 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
 
     animId = requestAnimationFrame(renderLoop);
 
-    // ── Resize handler ────────────────────
     const handleResize = () => {
       if (!el || !renderer) return;
       const w = el.clientWidth;
@@ -321,23 +302,19 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
       });
       renderer.dispose();
     };
-  }, [taskList]);
+  }, [taskList, settings]);
 
   const PRIORITY_COLORS = { High: "text-red-400", Medium: "text-orange-400", Low: "text-teal-400" };
 
   return (
     <div className="w-full h-full relative overflow-hidden" style={{ background: "#070a12" }}>
 
-      {/* 3D canvas */}
       <div ref={mountRef} className="w-full h-full absolute inset-0 z-0" />
 
-      {/* Top bar — drag handle + exit button */}
       <div
         style={{ WebkitAppRegion: "drag" }}
         className="absolute top-0 left-0 right-0 z-50 h-10 flex items-center justify-between px-3"
-        // Semi-transparent top overlay
       >
-        {/* Left: orbit label */}
         <div className="flex items-center gap-2 opacity-50" style={{ WebkitAppRegion: "no-drag" }}>
           <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
           <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-teal-300 font-semibold">
@@ -345,7 +322,6 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
           </span>
         </div>
 
-        {/* Right: Exit button */}
         <div style={{ WebkitAppRegion: "no-drag" }}>
           <button
             onClick={onBackToDashboard}
@@ -358,7 +334,6 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
         </div>
       </div>
 
-      {/* Planet hover tooltip */}
       {hoveredTask && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-fade-in">
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-md"
@@ -374,7 +349,6 @@ export default function OrbitView({ taskList, onBackToDashboard }) {
         </div>
       )}
 
-      {/* Empty state */}
       {taskList.filter(t => !t.is_completed).length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className="text-center opacity-40">

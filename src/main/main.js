@@ -5,7 +5,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, Menu, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const readline = require("readline");
 
 // Global window and process references
@@ -29,10 +29,8 @@ app.isQuitting = false;
  * Creates parent directory recursively if missing.
  */
 function getStoragePaths() {
-  // Compute directory path under the OS-specific user data directory
   const storageDir = path.join(app.getPath("userData"), "orbitcore");
 
-  // Create storage directory if it does not already exist
   if (!fs.existsSync(storageDir)) {
     try {
       fs.mkdirSync(storageDir, { recursive: true });
@@ -41,7 +39,6 @@ function getStoragePaths() {
     }
   }
 
-  // Set database file and main log paths
   dbFilePath = path.join(storageDir, "orbit_tracker.db");
   logFilePath = path.join(storageDir, "orbit_tracker.log");
 }
@@ -49,16 +46,11 @@ function getStoragePaths() {
 
 /**
  * Writes or delegates a diagnostic log entry with timestamp and severity level.
- * Writes directly to the log file and delegates to Python if active without infinite recursion.
  */
 function writeLog(level, message) {
-  // Format current ISO timestamp
   const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-  
-  // Format log entry line with Electron tags
   const logLine = `[${timestamp}] [${level}] [Electron.Main] ${message}\n`;
 
-  // Always append directly to local log file first
   if (logFilePath) {
     try {
       fs.appendFileSync(logFilePath, logLine, "utf8");
@@ -71,7 +63,6 @@ function writeLog(level, message) {
 
 /**
  * Sends a structured command and payload to Python via standard input.
- * Ensures stdout/stdin IPC channels remain unbuffered and flushed across Electron subprocesses.
  */
 function sendActionToPython(action, payload = {}) {
   if (pyProcess && !pyProcess.killed && pyProcess.stdin.writable) {
@@ -87,39 +78,66 @@ function sendActionToPython(action, payload = {}) {
 
 
 /**
+ * Helper to pin Orbit window to desktop (behind all others)
+ */
+function pinOrbitToDesktop() {
+  if (!orbitWindow || orbitWindow.isDestroyed()) return;
+  
+  try {
+    const hwnd = orbitWindow.getNativeWindowHandle().readUInt32LE(0);
+    
+    const psCmd = `
+      Add-Type @"
+      using System;
+      using System.Runtime.InteropServices;
+      public class Win32 {
+        [DllImport("user32.dll")]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, 
+          int X, int Y, int cx, int cy, uint uFlags);
+        public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+        public const uint SWP_NOSIZE = 1;
+        public const uint SWP_NOMOVE = 2;
+      }
+"@
+      [Win32]::SetWindowPos([IntPtr]${hwnd}, [Win32]::HWND_BOTTOM, 0, 0, 0, 0, 
+        ([Win32]::SWP_NOSIZE -bor [Win32]::SWP_NOMOVE))
+    `;
+    
+    execSync(`powershell -Command "${psCmd.replace(/\n/g, ' ')}"`, { stdio: 'ignore' });
+    writeLog("INFO", "Orbit window pinned to desktop (behind all windows)");
+  } catch (err) {
+    writeLog("WARNING", `Failed to pin orbit window: ${err.message}`);
+  }
+}
+
+
+/**
  * Launches the background Python monitor subprocess.
  * Implements a backoff auto-restart logic (max 3 launches within 60 seconds).
  */
 function spawnPythonSubprocess() {
   const now = Date.now();
   
-  // Clean up attempts older than 60 seconds
   spawnAttempts = spawnAttempts.filter(attemptTime => now - attemptTime < 60000);
 
-  // If 3 crashes occurred within 60 seconds, halt restarts and alert frontend
   if (spawnAttempts.length >= 3) {
     writeLog("ERROR", "Python subprocess crashed 3 times in 60s. Disabling auto-restart.");
     
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-      // Notify the frontend that the monitoring backend is offline
       dashboardWindow.webContents.send("monitor-status", { status: "offline" });
     }
     return;
   }
 
-  // Log the current spawn attempt timestamp
   spawnAttempts.push(now);
   const isDev = !app.isPackaged;
   writeLog("INFO", `Spawning Python backend (DevMode: ${isDev}, Attempt: ${spawnAttempts.length})`);
 
-  // Spawn backend process based on environment
   if (isDev) {
-    // Development mode: spawn using system Python interpreter with unbuffered stdio (-u)
     pyProcess = spawn("python", ["-u", "./src/backend/monitor.py"], {
       env: { ...process.env, PYTHONUNBUFFERED: "1" }
     });
   } else {
-    // Production mode: spawn the compiled PyInstaller executable
     const binaryPath = path.join(
       process.resourcesPath,
       "src/backend/dist/orbit_monitor/orbit_monitor.exe"
@@ -129,13 +147,11 @@ function spawnPythonSubprocess() {
     });
   }
 
-  // 1. Create a line-by-line readline interface on Python stdout stream
   const outputReader = readline.createInterface({
     input: pyProcess.stdout,
     terminal: false
   });
 
-  // Handle standard JSON messages received from Python stdout
   outputReader.on("line", (line) => {
     try {
       const message = JSON.parse(line);
@@ -145,7 +161,6 @@ function spawnPythonSubprocess() {
         ipcMain.emit("paths-initialized-from-python");
       }
 
-      // Broadcast parsed message channels to open renderer windows
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
         dashboardWindow.webContents.send(channel, data);
       }
@@ -157,37 +172,27 @@ function spawnPythonSubprocess() {
     }
   });
 
-  // 2. Capture stderr lines and write them to diagnostic log
   pyProcess.stderr.on("data", (data) => {
     writeLog("ERROR", `Python stderr: ${data.toString().trim()}`);
   });
 
-  // 3. Handle Python process exit events and schedule auto-restarts
   pyProcess.on("close", (code) => {
     writeLog("WARNING", `Python subprocess exited with code: ${code}`);
     pyProcess = null;
 
-    // Skip restart sequence if application is actively shutting down
     if (app.isQuitting) return;
 
-    // Wait 2 seconds before attempting subprocess restart
     setTimeout(() => {
-      // Determine next status state based on attempts list length
       const nextStatus = spawnAttempts.length >= 3 ? "offline" : "reconnecting";
       
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-        // Broadcast the status update to frontend components
         dashboardWindow.webContents.send("monitor-status", { status: nextStatus });
       }
 
-      // Re-trigger process launch
       spawnPythonSubprocess();
     }, 2000);
   });
 }
-
-
-
 
 
 /**
@@ -200,7 +205,6 @@ function validateSettings(data) {
 
   const validated = {};
 
-  // Check and validate checkInterval bounds (1 to 10 seconds)
   if (data.hasOwnProperty("checkInterval")) {
     const val = parseInt(data.checkInterval, 10);
     if (!isNaN(val) && val >= 1 && val <= 10) {
@@ -208,7 +212,6 @@ function validateSettings(data) {
     }
   }
 
-  // Check and validate retentionDays bounds (7 to 365 days)
   if (data.hasOwnProperty("retentionDays")) {
     const val = parseInt(data.retentionDays, 10);
     if (!isNaN(val) && val >= 7 && val <= 365) {
@@ -216,7 +219,6 @@ function validateSettings(data) {
     }
   }
 
-  // Check and validate researchEnabled toggle string
   if (data.hasOwnProperty("researchEnabled")) {
     const val = String(data.researchEnabled).toLowerCase();
     if (val === "true" || val === "false") {
@@ -234,7 +236,6 @@ function validateSettings(data) {
 function loadFocusMessages() {
   const isDev = !app.isPackaged;
   
-  // Compute configuration file path in root directory of execution
   const msgPath = isDev 
     ? path.join(__dirname, "../../focusModemsgs.txt")
     : path.join(path.dirname(process.execPath), "focusModemsgs.txt");
@@ -245,7 +246,6 @@ function loadFocusMessages() {
       const matches = [];
       const lines = content.split(/\r?\n/);
       
-      // Parse entries formatted like: NUMBER. "Message Text"
       for (const line of lines) {
         const match = line.match(/^\d+\.\s+"(.*)"$/);
         if (match) {
@@ -269,7 +269,6 @@ function loadFocusMessages() {
  */
 function attachNavigationGuard(windowRef) {
   windowRef.webContents.on("will-navigate", (event, url) => {
-    // Block URL changes that do not target dev server port or local file protocols
     if (!url.startsWith("http://localhost:5173") && !url.startsWith("file://")) {
       event.preventDefault();
       writeLog("WARNING", `Navigation attempt blocked to: ${url}`);
@@ -282,13 +281,24 @@ function attachNavigationGuard(windowRef) {
  * Creates the dashboard window framed console.
  */
 function createDashboardWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: workWidth, height: workHeight, x: workX, y: workY } = primaryDisplay.workArea;
+
+  const windowWidth = 1280;
+  const windowHeight = 800;
+  const x = Math.max(workX, workX + Math.round((workWidth - windowWidth) / 2));
+  const y = Math.max(workY, workY + Math.round((workHeight - windowHeight) / 2));
+
   dashboardWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: windowWidth,
+    height: windowHeight,
+    x: x,
+    y: y,
     minWidth: 900,
     minHeight: 600,
     title: "Orbit Task Tracker",
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -306,7 +316,12 @@ function createDashboardWindow() {
     dashboardWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
 
-  // Attach navigation guard to block external link navigation inside renderer context
+  dashboardWindow.once("ready-to-show", () => {
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.show();
+    }
+  });
+
   attachNavigationGuard(dashboardWindow);
 
   dashboardWindow.on("closed", () => {
@@ -352,7 +367,6 @@ function createOrbitWindow() {
     orbitWindow.loadFile(path.join(__dirname, "../../dist/index.html"), { hash: "orbit" });
   }
 
-  // Attach navigation guard to Orbit window
   attachNavigationGuard(orbitWindow);
 
   orbitWindow.on("closed", () => {
@@ -364,26 +378,20 @@ function createOrbitWindow() {
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  // Disable global window menu bar
   Menu.setApplicationMenu(null);
-
-  // Resolve AppData paths
   getStoragePaths();
   writeLog("INFO", "Electron app ready. Initializing...");
 
-  // Launch background Python process
+  // Create dashboard immediately
+  createDashboardWindow();
+  
+  // Launch Python backend in background
   spawnPythonSubprocess();
 
-  // Wait for paths-initialized before showing dashboard
-  ipcMain.once("paths-initialized-from-python", () => {
-    writeLog("INFO", "Python backend initialized. Creating dashboard window.");
-    createDashboardWindow();
-  });
-
-  // Transmit storage paths to Python with small delay to let streams start up
+  // Set paths when ready (non-blocking)
   setTimeout(() => {
     sendActionToPython("setPaths", { dbPath: dbFilePath, logPath: logFilePath });
-  }, 200);
+  }, 100);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -403,13 +411,11 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     writeLog("INFO", `Mode transition requested: ${targetMode}`);
 
     if (targetMode === "orbit") {
-      // CLOSE dashboard (don't hide)
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
         dashboardWindow.close();
         dashboardWindow = null;
       }
       
-      // Launch Orbit window if not exists
       if (!orbitWindow) {
         createOrbitWindow();
       } else {
@@ -417,13 +423,11 @@ ipcMain.on("task-action", (event, { action, payload }) => {
       }
       
     } else {
-      // CLOSE orbit window
       if (orbitWindow && !orbitWindow.isDestroyed()) {
         orbitWindow.close();
         orbitWindow = null;
       }
       
-      // Relaunch dashboard
       if (!dashboardWindow) {
         createDashboardWindow();
       } else {
@@ -432,14 +436,12 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     }
 
   } else if (action === "getFocusMessages") {
-    // Read local customizable reminders list
     const msgs = loadFocusMessages();
     event.sender.send("focus-messages", msgs);
 
   } else if (action === "exportSettings") {
     const parentWin = dashboardWindow || orbitWindow;
     
-    // Display native OS save dialog for exporting configuration files
     const filePath = dialog.showSaveDialogSync(parentWin, {
       title: "Export Settings",
       defaultPath: path.join(app.getPath("documents"), "orbit_settings.json"),
@@ -447,14 +449,12 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     });
 
     if (filePath) {
-      // Direct Python monitor to save settings mapping to target JSON file path
       sendActionToPython("exportSettingsFile", { filePath });
     }
 
   } else if (action === "importSettings") {
     const parentWin = dashboardWindow || orbitWindow;
 
-    // Display native OS open dialog to select setting backup JSON file
     const filePaths = dialog.showOpenDialogSync(parentWin, {
       title: "Import Settings",
       defaultPath: app.getPath("documents"),
@@ -470,7 +470,6 @@ ipcMain.on("task-action", (event, { action, payload }) => {
         const validated = validateSettings(parsed);
 
         if (validated) {
-          // Iterate and send each validated setting to Python database handler
           for (const [key, value] of Object.entries(validated)) {
             sendActionToPython("saveSetting", { key, value });
           }
@@ -508,20 +507,81 @@ ipcMain.on("task-action", (event, { action, payload }) => {
       writeLog("INFO", `Set orbit window opacity to: ${opacity}`);
     }
 
+  } else if (action === "set-orbit-display-mode") {
+    const mode = payload.displayMode;
+    
+    if (orbitWindow && !orbitWindow.isDestroyed()) {
+      if (mode === "pinned") {
+        pinOrbitToDesktop();
+        orbitWindow.setAlwaysOnTop(false);
+        writeLog("INFO", "Orbit set to desktop-pinned mode");
+      } else if (mode === "overlay") {
+        orbitWindow.setAlwaysOnTop(true);
+        writeLog("INFO", "Orbit set to overlay mode");
+      } else if (mode === "floating") {
+        orbitWindow.setAlwaysOnTop(false);
+        writeLog("INFO", "Orbit set to floating mode");
+      }
+    }
+
+  } else if (action === "getRunningApps") {
+    try {
+      const apps = [];
+      
+      execSync('tasklist /fo csv /nh', (error, stdout) => {
+        if (!error) {
+          const lines = stdout.trim().split('\n');
+          lines.slice(0, 50).forEach(line => {
+            const name = line.replace(/"/g, '').trim();
+            if (name && !name.includes('System') && !name.includes('svchost')) {
+              apps.push({
+                name: name.toLowerCase(),
+                displayName: name.replace('.exe', '')
+              });
+            }
+          });
+        }
+      });
+
+      // Fallback async command execution
+      const { exec } = require("child_process");
+      exec('tasklist /fo csv /nh', (error, stdout) => {
+        if (!error && stdout) {
+          const lines = stdout.trim().split(/\r?\n/);
+          const uniqueApps = new Map();
+          lines.forEach(line => {
+            const parts = line.split(',');
+            if (parts.length > 0) {
+              const name = parts[0].replace(/"/g, '').trim();
+              if (name && !name.toLowerCase().includes('system') && !name.toLowerCase().includes('svchost') && name.endsWith('.exe')) {
+                uniqueApps.set(name.toLowerCase(), {
+                  name: name.toLowerCase(),
+                  displayName: name.replace(/\.exe$/i, '')
+                });
+              }
+            }
+          });
+          event.sender.send('running-apps', Array.from(uniqueApps.values()).slice(0, 40));
+        } else {
+          event.sender.send('running-apps', []);
+        }
+      });
+    } catch (err) {
+      writeLog("ERROR", `Failed to get running apps: ${err.message}`);
+      event.sender.send('running-apps', []);
+    }
+
   } else {
-    // Forward standard actions directly to Python stdin
     sendActionToPython(action, payload);
   }
 });
 
 
-// Handles direct write log messages received from renderer context
 ipcMain.on("write-log", (event, { level, message }) => {
   writeLog(level, message);
 });
 
 
-// Opens the application log file in user standard notepad/text viewer
 ipcMain.on("open-log-file", () => {
   if (fs.existsSync(logFilePath)) {
     shell.openPath(logFilePath);
@@ -533,11 +593,9 @@ ipcMain.on("open-log-file", () => {
 
 // ─── Shutdown ─────────────────────────────────────────────────────────────────
 
-// Triggers when Electron app begins closing sequences
 app.on("before-quit", () => {
   app.isQuitting = true;
   
-  // Cleanly kill the background Python monitoring subprocess
   if (pyProcess) {
     pyProcess.kill();
     pyProcess = null;

@@ -257,12 +257,19 @@ def getTaskTimeBreakdown(connection, taskId):
 
 def getAllTasks(connection):
     """
-    Queries and returns all active and completed tasks in the database.
+    Queries and returns active tasks efficiently.
+    Fetches only non-completed tasks to improve startup speed.
     """
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM tasks ORDER BY is_completed ASC, created_at DESC")
+    cursor.execute("""
+        SELECT id, title, priority, type, deadline, is_completed, created_at, 
+               target_apps, color, tags, description, notes
+        FROM tasks 
+        WHERE is_completed = 0
+        ORDER BY created_at DESC
+        LIMIT 100
+    """)
     
-    # Map raw Row objects into clean lists of dictionaries
     rows = cursor.fetchall()
     taskList = []
     

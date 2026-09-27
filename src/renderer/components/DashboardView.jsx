@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import CollapsiblePanel from './CollapsiblePanel';
+import AppSelectionModal from './AppSelectionModal.jsx';
 
-export default function DashboardView({ taskList, activeTask, isFocusActive, monitorUpdate, focusMessages, analyticsData }) {
+export default function DashboardView({ taskList, tasksLoading, activeTask, isFocusActive, monitorUpdate, focusMessages, analyticsData, triggerToast }) {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskType, setTaskType] = useState("One-Time");
   const [taskPriority, setTaskPriority] = useState("Medium");
@@ -16,6 +17,28 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
   
   const [editingTargetApps, setEditingTargetApps] = useState(false);
   const [editTargetAppsValue, setEditTargetAppsValue] = useState("");
+
+  const [showAppModal, setShowAppModal] = useState(false);
+  const [pendingFocusTaskId, setPendingFocusTaskId] = useState(null);
+
+  const handleStartFocusWithApps = (taskId) => {
+    setPendingFocusTaskId(taskId);
+    setShowAppModal(true);
+  };
+
+  const handleAppSelectionConfirm = ({ filterMode, allowedApps }) => {
+    const appString = allowedApps.join(',');
+    window.electronAPI.sendTaskAction("editTask", {
+      taskId: pendingFocusTaskId,
+      updates: { target_apps: appString }
+    });
+    
+    setTimeout(() => {
+      window.electronAPI.sendTaskAction("startFocus", { taskId: pendingFocusTaskId });
+      setShowAppModal(false);
+      setPendingFocusTaskId(null);
+    }, 300);
+  };
 
   const handleSaveTargetApps = () => {
     window.electronAPI.sendTaskAction("editTask", { 
@@ -477,7 +500,13 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[450px]">
-              {filteredTasks.length === 0 ? (
+              {tasksLoading ? (
+                <div className="space-y-3 flex-1">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-12 bg-surface rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : filteredTasks.length === 0 ? (
                 <div className="w-full h-full flex flex-col items-center justify-center text-on-surface-variant p-8">
                   <span className="material-symbols-outlined text-4xl mb-3 opacity-50">done_all</span>
                   <p className="text-body-md text-center">No matching tasks found.</p>
@@ -545,7 +574,7 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
                             </>
                           ) : (
                             <button
-                              onClick={() => startFocus(task.id)}
+                              onClick={() => handleStartFocusWithApps(task.id)}
                               title="Start Focus"
                               className="bg-primary-container text-primary hover:bg-primary hover:text-on-primary p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                             >
@@ -612,6 +641,14 @@ export default function DashboardView({ taskList, activeTask, isFocusActive, mon
           </CollapsiblePanel>
         </div>
       </div>
+
+      {showAppModal && (
+        <AppSelectionModal
+          taskId={pendingFocusTaskId}
+          onConfirm={handleAppSelectionConfirm}
+          onCancel={() => { setShowAppModal(false); setPendingFocusTaskId(null); }}
+        />
+      )}
     </div>
   );
 }
