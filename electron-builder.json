@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.orbitcore.focusengine",
+  "productName": "OrbitCore",
+  "artifactName": "${productName}-${version}-setup.${ext}",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "focusModemsgs.txt",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "src/backend/dist/orbit_monitor.exe",
+      "to": "src/backend/dist/orbit_monitor/orbit_monitor.exe"
+    },
+    {
+      "from": "focusModemsgs.txt",
+      "to": "focusModemsgs.txt"
+    },
+    {
+      "from": "public/reminders",
+      "to": "reminders"
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "assets/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "OrbitCore",
+    "uninstallDisplayName": "OrbitCore Focus Engine",
+    "license": "LICENSE.txt"
+  }
+}

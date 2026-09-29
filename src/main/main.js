@@ -25,17 +25,58 @@ app.isQuitting = false;
 
 
 /**
- * Resolves local OS AppData paths for SQLite database and log file.
+ * Reads installer or custom configuration from config.json.
+ * Searches in executable directory, user data directory, or app root.
+ */
+function getInstallerConfig() {
+  const possiblePaths = [
+    path.join(path.dirname(process.execPath), "config.json"),
+    path.join(app.getPath("userData"), "config.json"),
+    path.join(__dirname, "../../config.json")
+  ];
+
+  for (const configPath of possiblePaths) {
+    if (fs.existsSync(configPath)) {
+      try {
+        const raw = fs.readFileSync(configPath, "utf8");
+        const parsed = JSON.parse(raw);
+        writeLog("INFO", `Found installer configuration at: ${configPath}`);
+        return parsed;
+      } catch (err) {
+        writeLog("WARNING", `Failed to parse config at ${configPath}: ${err.message}`);
+      }
+    }
+  }
+  return null;
+}
+
+
+/**
+ * Resolves local OS AppData or custom data directory paths for SQLite database and log file.
  * Creates parent directory recursively if missing.
  */
 function getStoragePaths() {
-  const storageDir = path.join(app.getPath("userData"), "orbitcore");
+  const config = getInstallerConfig();
+  let storageDir = "";
+
+  if (config && (config.dataDir || config.storageDir)) {
+    storageDir = config.dataDir || config.storageDir;
+    writeLog("INFO", `Using custom data directory: ${storageDir}`);
+  } else {
+    storageDir = path.join(app.getPath("userData"), "orbitcore");
+  }
 
   if (!fs.existsSync(storageDir)) {
     try {
       fs.mkdirSync(storageDir, { recursive: true });
     } catch (err) {
-      console.error("Failed to create storage directory:", err);
+      console.error("Failed to create storage directory, falling back to default:", err);
+      storageDir = path.join(app.getPath("userData"), "orbitcore");
+      try {
+        fs.mkdirSync(storageDir, { recursive: true });
+      } catch (e) {
+        console.error("Failed to create fallback storage directory:", e);
+      }
     }
   }
 
@@ -571,6 +612,9 @@ ipcMain.on("task-action", (event, { action, payload }) => {
       event.sender.send('running-apps', []);
     }
 
+  } else if (action === "getDataDirectory") {
+    event.sender.send("data-directory", path.dirname(dbFilePath));
+
   } else {
     sendActionToPython(action, payload);
   }
@@ -588,6 +632,11 @@ ipcMain.on("open-log-file", () => {
   } else {
     writeLog("WARNING", "Log file does not exist yet.");
   }
+});
+
+
+ipcMain.handle("get-data-directory", () => {
+  return path.dirname(dbFilePath);
 });
 
 

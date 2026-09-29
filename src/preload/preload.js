@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "set-orbit-opacity",
       "set-orbit-display-mode",
       "getRunningApps",
+      "getDataDirectory",
       "getTaskTimeBreakdown"
     ];
 
@@ -64,6 +65,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "analytics-data",
       "deadline-reminder",
       "running-apps",
+      "data-directory",
       "task-time-breakdown"
     ];
 
@@ -86,6 +88,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // 4. Open the local log file in the operating system's default text editor
   openLogFile: () => {
     ipcRenderer.send("open-log-file");
+  },
+
+  // 5. Get current active data directory
+  getDataDirectory: () => {
+    return ipcRenderer.invoke("get-data-directory");
   }
 
 });

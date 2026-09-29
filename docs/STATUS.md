@@ -82,5 +82,7 @@ All major milestones, UI/UX refinements, 3D Solar Orbit View upgrades, 6-variant
 
 - Main Process Syntax Check (`node --check src/main/main.js`): PASSED (0 errors).
 - Vite Production Build (`npm run build`): PASSED (0 compilation errors).
+- Python Executable Build (`pyinstaller --onefile monitor.py`): PASSED — `src/backend/dist/orbit_monitor.exe` (~19.6 MB).
+- NSIS Installer Build (`npm run make`): PASSED — `dist/OrbitCore-1.0.0-setup.exe` (~1.1 GB).
 - Documentation Repository: All documentation organized into `docs/` folder; `README.md` updated in root.
 - Git Repository Status: Staged and committed to `origin/main`.
