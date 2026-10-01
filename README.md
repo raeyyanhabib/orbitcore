@@ -43,9 +43,9 @@ Ensure you have the following installed on your machine:
 
 ### Option 1: Automated Launcher (Recommended for Windows)
 
-Orbit Core includes an automated launcher script `orbiting.bat` that automatically checks for missing dependencies, installs Node & Python packages, and launches the app.
+Orbit Core includes an automated launcher script `scripts/orbiting.bat` that automatically checks for missing dependencies, installs Node & Python packages, and launches the app.
 
-1. Double-click **`orbiting.bat`** in the project root folder.
+1. Double-click **`scripts/orbiting.bat`** (or run `.\scripts\orbiting.bat` from terminal).
 2. Select your desired mode:
    - **`1`** — Run in **Development Mode** (Vite Dev Server + Electron CLI)
    - **`2`** — Build Production Python Binary & Run Packaged App
@@ -90,7 +90,7 @@ npm run build
 
 ## 🏗️ Technology Stack
 
-- **Frontend**: Electron, React 18, Three.js (3D graphics), Tailwind CSS v3
+- **Frontend**: Electron, React 19, Three.js (3D graphics), Tailwind CSS v3
 - **Backend Subprocess**: Python 3.10+, `psutil` (Active window detection), `win32gui`, `duckduckgo_search`
 - **Database**: SQLite 3 (WAL mode)
 - **Build Tools**: Vite 8, PyInstaller
@@ -101,16 +101,17 @@ npm run build
 
 ```
 orbitcore/
-├── docs/                     # Project documentation (Architecture, Status, PRD, Guides)
+├── docs/                     # Project documentation (Architecture, Lifecycle, Status, PRD, Guides)
 │   ├── ARCHITECTURE.md
+│   ├── LIFECYCLE.md
 │   ├── STATUS.md
-│   ├── implement_rn.md
-│   ├── orbitscreens.txt
-│   ├── theEngineer.md
-│   ├── theEngineerGuide.md
 │   └── thePRD.md
+├── licenses/                 # Open-source third-party licenses (Electron, Chromium, MIT)
 ├── public/
 │   └── reminders/            # Motivational text phrase files (1.txt - 25.txt)
+├── scripts/                  # Automated Windows launch and PyInstaller build scripts
+│   ├── build-python.bat
+│   └── orbiting.bat
 ├── src/
 │   ├── backend/
 │   │   ├── monitor.py        # Python subprocess monitoring thread & IPC stdio listener
@@ -124,15 +125,9 @@ orbitcore/
 │       ├── themes.js         # 6 synchronized color palettes (Dark & Light variants)
 │       ├── hooks/
 │       │   └── useTheme.js   # Dynamic theme hook & localStorage persistence
-│       ├── components/
-│       │   ├── DashboardView.jsx     # Task CRUD, filters, & task detail panel
-│       │   ├── OrbitView.jsx         # 3D Three.js solar system desktop widget
-│       │   ├── AnalyticsView.jsx     # Heatmap, KPI cards, & focus ratio bar
-│       │   ├── SettingsView.jsx      # Theme selector grid, sliders, & data export
-│       │   ├── RemindersOverlay.jsx  # Side notification overlay
-│       │   └── FocusModeOverlay.jsx  # Playful distraction alerts
-│       └── index.css                 # Design system tokens & Tailwind CSS utilities
-├── focusModemsgs.txt          # Customizable focus distraction messages
+│       ├── components/       # UI View and Modal components
+│       └── index.css         # Design system tokens & Tailwind CSS utilities
+├── focusModemsgs.txt         # Customizable focus distraction messages
 ├── package.json
 └── vite.config.js
 ```
@@ -141,4 +136,4 @@ orbitcore/
 
 ## 📄 License
 
-This project is licensed under the **ISC License**.
+This project is licensed under the **MIT License**.
