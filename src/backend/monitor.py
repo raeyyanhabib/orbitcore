@@ -632,6 +632,8 @@ def deadlineReminderThread():
     writeToLog("INFO", "Deadline & random reminder thread started.")
     lastRandomNudge = time.time()
     
+    nextNudgeInterval = random.randint(1200, 2400)
+    
     while True:
         try:
             if dbFilePath and os.path.exists(dbFilePath):
@@ -661,9 +663,9 @@ def deadlineReminderThread():
                 
             # Random motivational nudge every 20-40 minutes if focus is active
             now_time = time.time()
-            nudge_interval = random.randint(1200, 2400)
-            if focusActive and activeTask and (now_time - lastRandomNudge > nudge_interval):
+            if focusActive and activeTask and (now_time - lastRandomNudge > nextNudgeInterval):
                 lastRandomNudge = now_time
+                nextNudgeInterval = random.randint(1200, 2400)
                 sendToElectron("deadline-reminder", {
                     "taskId": activeTask["id"],
                     "title": activeTask["title"],

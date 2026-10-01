@@ -566,51 +566,33 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     }
 
   } else if (action === "getRunningApps") {
-    try {
-      const apps = [];
-      
-      execSync('tasklist /fo csv /nh', (error, stdout) => {
-        if (!error) {
-          const lines = stdout.trim().split('\n');
-          lines.slice(0, 50).forEach(line => {
-            const name = line.replace(/"/g, '').trim();
-            if (name && !name.includes('System') && !name.includes('svchost')) {
-              apps.push({
+    // Asynchronously query Windows tasklist in CSV format with no headers (/nh)
+    const { exec } = require("child_process");
+    exec('tasklist /fo csv /nh', (error, stdout) => {
+      if (!error && stdout) {
+        const lines = stdout.trim().split(/\r?\n/);
+        const uniqueApps = new Map();
+        
+        lines.forEach(line => {
+          const parts = line.split(',');
+          if (parts.length > 0) {
+            const name = parts[0].replace(/"/g, '').trim();
+            // Filter out internal Windows system helper processes
+            if (name && !name.toLowerCase().includes('system') && !name.toLowerCase().includes('svchost') && name.endsWith('.exe')) {
+              uniqueApps.set(name.toLowerCase(), {
                 name: name.toLowerCase(),
-                displayName: name.replace('.exe', '')
+                displayName: name.replace(/\.exe$/i, '')
               });
             }
-          });
-        }
-      });
-
-      // Fallback async command execution
-      const { exec } = require("child_process");
-      exec('tasklist /fo csv /nh', (error, stdout) => {
-        if (!error && stdout) {
-          const lines = stdout.trim().split(/\r?\n/);
-          const uniqueApps = new Map();
-          lines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length > 0) {
-              const name = parts[0].replace(/"/g, '').trim();
-              if (name && !name.toLowerCase().includes('system') && !name.toLowerCase().includes('svchost') && name.endsWith('.exe')) {
-                uniqueApps.set(name.toLowerCase(), {
-                  name: name.toLowerCase(),
-                  displayName: name.replace(/\.exe$/i, '')
-                });
-              }
-            }
-          });
-          event.sender.send('running-apps', Array.from(uniqueApps.values()).slice(0, 40));
-        } else {
-          event.sender.send('running-apps', []);
-        }
-      });
-    } catch (err) {
-      writeLog("ERROR", `Failed to get running apps: ${err.message}`);
-      event.sender.send('running-apps', []);
-    }
+          }
+        });
+        
+        event.sender.send('running-apps', Array.from(uniqueApps.values()).slice(0, 40));
+      } else {
+        writeLog("ERROR", `Failed to retrieve running apps: ${error ? error.message : "Empty output"}`);
+        event.sender.send('running-apps', []);
+      }
+    });
 
   } else if (action === "getDataDirectory") {
     event.sender.send("data-directory", path.dirname(dbFilePath));

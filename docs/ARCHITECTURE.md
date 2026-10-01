@@ -1,7 +1,8 @@
 ================================================================================
                     ORBITCORE - FILE ARCHITECTURE MAP
                     How files connect, what they own, and what they depend on
-                    Last updated: 2026-09-18
+                    See also: docs/LIFECYCLE.md for full execution sequence diagrams
+                    Last updated: 2026-10-01
 ================================================================================
 
 LEGEND

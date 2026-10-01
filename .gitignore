@@ -2,6 +2,7 @@
 node_modules/
 dist/
 build/
+release/
 .env
 
 # Python artifacts
@@ -10,14 +11,29 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+src/backend/build/
+src/backend/dist/
+src/backend/orbit_monitor.spec
 
 # Local SQLite Database & Logs
 orbit_tracker.db
 orbit_tracker.db-wal
 orbit_tracker.db-shm
 orbit_tracker.log
+orbit_test.db*
 *.log
 
-# Antigravity artifacts
+# Windows Electron Executables & Binaries
+*.exe
+*.dll
+*.pak
+*.dat
+*.bin
+locales/
+resources/
+
+# IDE & Tooling
 .gemini/
 .antigravity/
+.vscode/
+.idea/

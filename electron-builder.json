@@ -4,7 +4,7 @@
   "productName": "OrbitCore",
   "artifactName": "${productName}-${version}-setup.${ext}",
   "directories": {
-    "output": "dist",
+    "output": "release",
     "buildResources": "build"
   },
   "files": [

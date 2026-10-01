@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "start": "electron .",
-    "make": "electron-builder --win nsis",
-    "make-portable": "electron-builder --win portable",
+    "make": "npx electron-builder --win nsis",
+    "make-portable": "npx electron-builder --win portable",
     "dist": "npm run build && npm run make",
     "dist-portable": "npm run build && npm run make-portable",
     "test": "echo \"Error: no test specified\" && exit 1"
