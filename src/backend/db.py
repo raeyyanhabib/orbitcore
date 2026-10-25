@@ -36,13 +36,12 @@ def getDatabaseConnection(dbPath="orbit_tracker.db"):
 
 def createTables(connection):
     """
-    Initializes standard database tables, sets up indexes for focus tracking queries,
-    and sets initial schema versioning.
+    Initializes all database tables, performance indexes, and schema version stamp.
+    Safe to call on every startup — all statements use IF NOT EXISTS guards.
     """
-    # Create database cursor to execute SQL operations
     cursor = connection.cursor()
 
-    # 1. Create Tasks table storing details of student/freelance goals.
+    # Tasks: core goal/mission records
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,25 +49,19 @@ def createTables(connection):
             description TEXT,
             notes TEXT,
             priority TEXT CHECK(priority IN ('High', 'Medium', 'Low')) DEFAULT 'Medium',
-            tags TEXT,                     -- JSON-formatted string: '["coding", "study"]'
+            tags TEXT,              -- JSON array string: '["coding", "study"]'
             type TEXT CHECK(type IN ('One-Time', 'Daily', 'Recurring')) DEFAULT 'One-Time',
-            interval_days INTEGER DEFAULT 1, -- Cycles for recurring tasks
-            target_apps TEXT,              -- Comma-separated process names: "code.exe,chrome.exe"
-            color TEXT,                    -- Hex code representation: "#FF0000"
-            deadline DATETIME,             -- Target deadline: "2026-09-10T14:30"
-            is_completed INTEGER DEFAULT 0, -- 0 = active, 1 = completed
+            interval_days INTEGER DEFAULT 1,
+            target_apps TEXT,       -- Comma-separated process names: "code.exe,chrome.exe"
+            color TEXT,             -- Hex color: "#FF0000"
+            deadline DATETIME,
+            is_completed INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             completed_at DATETIME
         );
     """)
 
-    # Check if deadline column exists in case DB was created before deadline feature
-    try:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN deadline DATETIME DEFAULT NULL;")
-    except Exception:
-        pass  # Column already exists
-
-    # 2. Create Time Logs table storing 3-second active foreground window focus metrics.
+    # Time Logs: per-tick active window focus metrics (batched every 5 ticks or 15s)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS time_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,24 +69,24 @@ def createTables(connection):
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             duration_seconds INTEGER NOT NULL,
             is_on_task INTEGER CHECK(is_on_task IN (0, 1)),
-            app_name TEXT,                 -- e.g., "code.exe"
-            window_title TEXT,             -- e.g., "App.jsx - orbitcore"
+            app_name TEXT,
+            window_title TEXT,
             FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
         );
     """)
 
-    # 3. Create Web Research Cache table caching DuckDuckGo response payloads.
+    # Web Research Cache: DuckDuckGo result payloads keyed by task_id
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS web_research (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id INTEGER UNIQUE,
-            tips TEXT,                     -- JSON string representing study tips
+            tips TEXT,              -- JSON-encoded tips object
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
         );
     """)
 
-    # 4. Create App Settings table storing key-value pairs of user configs.
+    # Settings: flat key-value config store
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -101,43 +94,38 @@ def createTables(connection):
         );
     """)
 
-    # 5. Create database indexes on task_id and timestamp to optimize focus log lookups and chart speeds.
+    # Performance indexes for fast dashboard queries and analytics aggregation
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_time_logs_task_id ON time_logs(task_id);")
-    
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_time_logs_timestamp ON time_logs(timestamp);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_is_completed ON tasks(is_completed);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);")
 
-    # 6. Schema migrations initialization: Set SQLite user_version to 1 for structured future upgrade tracking.
-    cursor.execute("PRAGMA user_version;")
-    
-    # Fetch user version from single-tuple output of PRAGMA query
-    currentVersion = cursor.fetchone()[0]
-    
+    # Schema version stamp — bump this integer when adding future migrations
+    currentVersion = cursor.execute("PRAGMA user_version;").fetchone()[0]
     if currentVersion < 1:
-        # Update user_version parameter in database file to version 1
         cursor.execute("PRAGMA user_version = 1;")
-        
-        connection.commit()
 
-    # Commit all table creation changes to disk
     connection.commit()
-
 
 def pruneOldLogs(connection, retentionDays=90):
     """
     Deletes focus tracking time_logs rows that exceed the configured data retention limit.
+    Enforces configurable retention periods (7–365 days, defaulting to 90).
+    Uses an explicit transaction context for WAL compatibility and performance.
     """
-    # Create cursor for transaction
-    cursor = connection.cursor()
+    try:
+        retentionDays = int(retentionDays)
+    except (ValueError, TypeError):
+        retentionDays = 90
 
-    # Build SQL to delete logs older than negative retention period days.
-    # We use parameterized query to safely pass negative string interval.
-    cursor.execute(
-        "DELETE FROM time_logs WHERE timestamp < datetime('now', ?)",
-        (f"-{retentionDays} days",)
-    )
+    # Clamp retention between 7 and 365 days to prevent accidental mass deletion or unbounded growth
+    retentionDays = max(7, min(365, retentionDays))
 
-    # Commit deletion changes to save storage
-    connection.commit()
+    with connection:
+        connection.execute(
+            "DELETE FROM time_logs WHERE timestamp < datetime('now', ?)",
+            (f"-{retentionDays} days",)
+        )
 
 
 def exportLogsToCSV(connection, csvFilePath):
@@ -255,10 +243,10 @@ def getTaskTimeBreakdown(connection, taskId):
     }
 
 
-def getAllTasks(connection):
+def getAllTasks(connection, limit=500):
     """
     Queries and returns active tasks efficiently.
-    Fetches only non-completed tasks to improve startup speed.
+    Utilizes idx_tasks_is_completed and idx_tasks_created_at for instant response even on 100+ task datasets.
     """
     cursor = connection.cursor()
     cursor.execute("""
@@ -267,16 +255,11 @@ def getAllTasks(connection):
         FROM tasks 
         WHERE is_completed = 0
         ORDER BY created_at DESC
-        LIMIT 100
-    """)
+        LIMIT ?
+    """, (limit,))
     
     rows = cursor.fetchall()
-    taskList = []
-    
-    for row in rows:
-        taskList.append(dict(row))
-        
-    return taskList
+    return [dict(row) for row in rows]
 
 
 def updateTask(connection, taskId, **fields):
@@ -293,17 +276,45 @@ def updateTask(connection, taskId, **fields):
     values = list(fields.values())
     values.append(taskId)
     
-    cursor.execute(f"UPDATE tasks SET {setClause} WHERE id = ?", values)
-    connection.commit()
+    with connection:
+        connection.execute(f"UPDATE tasks SET {setClause} WHERE id = ?", values)
 
 
 def deleteTask(connection, taskId):
     """
     Deletes a task by ID. Cascades automatically delete related logs and research cache.
     """
-    cursor = connection.cursor()
-    cursor.execute("DELETE FROM tasks WHERE id = ?", (taskId,))
-    connection.commit()
+    with connection:
+        connection.execute("DELETE FROM tasks WHERE id = ?", (int(taskId),))
+
+
+def batchCompleteTasks(connection, taskIds):
+    """
+    Marks multiple tasks as completed in a single atomic SQLite transaction.
+    """
+    if not taskIds:
+        return
+    completedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sanitizedIds = [int(tid) for tid in taskIds]
+    placeholders = ",".join("?" for _ in sanitizedIds)
+    with connection:
+        connection.execute(
+            f"UPDATE tasks SET is_completed = 1, completed_at = ? WHERE id IN ({placeholders})",
+            [completedAt] + sanitizedIds
+        )
+
+
+def batchDeleteTasks(connection, taskIds):
+    """
+    Deletes multiple tasks by ID in a single atomic transaction.
+    Cascades automatically clean up foreign keys in time_logs and web_research.
+    """
+    if not taskIds:
+        return
+    sanitizedIds = [int(tid) for tid in taskIds]
+    placeholders = ",".join("?" for _ in sanitizedIds)
+    with connection:
+        connection.execute(f"DELETE FROM tasks WHERE id IN ({placeholders})", sanitizedIds)
 
 
 def logTimeSpent(connection, taskId, durationSeconds, isOnTask, appName, windowTitle):
@@ -311,27 +322,27 @@ def logTimeSpent(connection, taskId, durationSeconds, isOnTask, appName, windowT
     Logs active app window checking statistics to the time_logs database.
     """
     cursor = connection.cursor()
-    cursor.execute("""
-        INSERT INTO time_logs (task_id, duration_seconds, is_on_task, app_name, window_title)
-        VALUES (?, ?, ?, ?, ?)
-    """, (taskId, durationSeconds, isOnTask, appName, windowTitle))
-    connection.commit()
+    with connection:
+        cursor.execute("""
+            INSERT INTO time_logs (task_id, duration_seconds, is_on_task, app_name, window_title)
+            VALUES (?, ?, ?, ?, ?)
+        """, (taskId, durationSeconds, isOnTask, appName, windowTitle))
     return cursor.lastrowid
 
 
 def logTimeSpentBatch(connection, logs):
     """
-    Logs multiple active app window checks to the time_logs database in a single transaction.
+    Logs multiple active app window checks to the time_logs database in an explicit transaction block.
+    Reduces disk I/O and prevents WAL checkpoint contention.
     """
     if not logs:
         return
         
-    cursor = connection.cursor()
-    cursor.executemany("""
-        INSERT INTO time_logs (task_id, duration_seconds, is_on_task, app_name, window_title)
-        VALUES (:task_id, :duration_seconds, :is_on_task, :app_name, :window_title)
-    """, logs)
-    connection.commit()
+    with connection:
+        connection.executemany("""
+            INSERT INTO time_logs (task_id, duration_seconds, is_on_task, app_name, window_title)
+            VALUES (:task_id, :duration_seconds, :is_on_task, :app_name, :window_title)
+        """, logs)
 
 
 def saveWebResearch(connection, taskId, tips):

@@ -21,6 +21,85 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
   const [showAppModal, setShowAppModal] = useState(false);
   const [pendingFocusTaskId, setPendingFocusTaskId] = useState(null);
 
+  // Power-User Features: Multi-selection & Custom Desktop Context Menu
+  const titleInputRef = React.useRef(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const [contextMenu, setContextMenu] = useState(null);
+
+  // Keyboard Navigation: Ctrl+N focuses task input, Escape dismisses menus
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.altKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        if (titleInputRef.current) {
+          titleInputRef.current.focus();
+        }
+      }
+      if (e.key === 'Escape') {
+        if (contextMenu) setContextMenu(null);
+        if (selectedTaskIds.size > 0) setSelectedTaskIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [contextMenu, selectedTaskIds]);
+
+  // Dismiss context menu on click outside
+  React.useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu) setContextMenu(null);
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [contextMenu]);
+
+  const toggleSelectTask = (taskId, e) => {
+    e.stopPropagation();
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTaskIds.size === filteredTasks.length) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
+    }
+  };
+
+  const handleBatchComplete = () => {
+    if (selectedTaskIds.size === 0) return;
+    const ids = Array.from(selectedTaskIds);
+    window.electronAPI.sendTaskAction("batchCompleteTasks", { taskIds: ids });
+    triggerToast("success", `Completed ${ids.length} mission(s)`);
+    setSelectedTaskIds(new Set());
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedTaskIds.size === 0) return;
+    const ids = Array.from(selectedTaskIds);
+    window.electronAPI.sendTaskAction("batchDeleteTasks", { taskIds: ids });
+    triggerToast("success", `Deleted ${ids.length} mission(s)`);
+    setSelectedTaskIds(new Set());
+  };
+
+  const handleTaskContextMenu = (e, task) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: Math.min(e.clientX, window.innerWidth - 200),
+      y: Math.min(e.clientY, window.innerHeight - 240),
+      task
+    });
+  };
+
   const handleStartFocusWithApps = (taskId) => {
     setPendingFocusTaskId(taskId);
     setShowAppModal(true);
@@ -414,8 +493,9 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
             <form onSubmit={handleCreateTask} className="space-y-3">
               <div>
                 <input
+                  ref={titleInputRef}
                   type="text"
-                  placeholder="What are you working on?"
+                  placeholder="What are you working on? (Press Ctrl+N anywhere to focus)"
                   className="input-premium"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
@@ -460,7 +540,7 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
 
               <button
                 type="submit"
-                className="btn-primary w-full justify-center text-sm py-2.5"
+                className="btn-primary w-full justify-center text-sm py-2.5 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">add_circle</span>
                 Add Mission
@@ -470,33 +550,53 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
 
           {/* Task List Panel */}
           <CollapsiblePanel title="Active Tasks" icon="task_alt" badge={taskList.filter(t => !t.is_completed).length}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
-              <input
-                type="text"
-                placeholder="Search missions..."
-                className="input-premium text-xs"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <select
-                className="input-premium text-xs cursor-pointer"
-                value={filterPriority}
-                onChange={(e) => setFilterPriority(e.target.value)}
-              >
-                <option value="">All Priorities</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-              <select
-                className="input-premium text-xs cursor-pointer"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="created">Most Recent</option>
-                <option value="priority">By Priority</option>
-                <option value="dueDate">By Due Date</option>
-              </select>
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 mb-4">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="text-xs px-2.5 py-2 rounded-lg border border-outline/20 bg-surface hover:bg-surface-variant/30 text-on-surface-variant flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                  title="Toggle select all tasks"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {selectedTaskIds.size > 0 && selectedTaskIds.size === filteredTasks.length
+                      ? "check_box"
+                      : selectedTaskIds.size > 0
+                      ? "indeterminate_check_box"
+                      : "check_box_outline_blank"}
+                  </span>
+                  <span className="hidden sm:inline">Select All</span>
+                </button>
+                <input
+                  type="text"
+                  placeholder="Filter missions..."
+                  className="input-premium text-xs flex-1"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto ml-auto">
+                <select
+                  className="input-premium text-xs cursor-pointer"
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                >
+                  <option value="">All Priorities</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+                <select
+                  className="input-premium text-xs cursor-pointer"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="created">Most Recent</option>
+                  <option value="priority">By Priority</option>
+                  <option value="dueDate">By Due Date</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[450px]">
@@ -512,47 +612,80 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
                   <p className="text-body-md text-center">No matching tasks found.</p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   {filteredTasks.map((task) => {
                     const isActive = activeTask && activeTask.id === task.id;
-                    const PRIORITY_DOT = {
-                      High: "var(--error)",
-                      Medium: "var(--secondary)",
-                      Low: "var(--primary)",
+                    const isSelected = selectedTaskIds.has(task.id);
+                    const PRIORITY_BADGE = {
+                      High: {
+                        color: "var(--error)",
+                        icon: "error",
+                        label: "HIGH",
+                        bg: "bg-error/10 text-error"
+                      },
+                      Medium: {
+                        color: "var(--secondary)",
+                        icon: "warning",
+                        label: "MED",
+                        bg: "bg-secondary/10 text-secondary"
+                      },
+                      Low: {
+                        color: "var(--primary)",
+                        icon: "check_circle",
+                        label: "LOW",
+                        bg: "bg-primary/10 text-primary"
+                      },
                     };
+                    const badge = PRIORITY_BADGE[task.priority] || PRIORITY_BADGE.Medium;
+
                     return (
                       <div
                         key={task.id}
                         onClick={() => openTaskDetails(task)}
-                        className={`group cursor-pointer active:scale-[0.99] transition-all rounded-xl p-3.5 flex items-center justify-between border ${
+                        onContextMenu={(e) => handleTaskContextMenu(e, task)}
+                        className={`group cursor-pointer active:scale-[0.995] transition-all rounded-xl px-3 py-2.5 flex items-center justify-between border ${
                           isActive
                             ? "border-primary"
-                            : "border-transparent hover:border-outline/20"
+                            : isSelected
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-outline/10 hover:border-outline/30 hover:bg-surface-variant/20"
                         }`}
                         style={{
                           background: isActive
                             ? "var(--primary-container)"
+                            : isSelected
+                            ? "var(--surface-container-high)"
                             : "var(--surface)",
                         }}
                       >
-                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-3">
-                          {/* Priority dot */}
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-2">
+                          {/* Selection Checkbox */}
+                          <div 
+                            onClick={(e) => toggleSelectTask(task.id, e)} 
+                            className="p-1 rounded hover:bg-surface-variant/50 transition-colors text-on-surface-variant flex items-center justify-center cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {isSelected ? "check_box" : "check_box_outline_blank"}
+                            </span>
+                          </div>
+
+                          {/* WCAG 2.1 AA Accessible Priority Badge */}
                           <div
-                            className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? "animate-pulse" : ""}`}
-                            style={{
-                              background: PRIORITY_DOT[task.priority] || "var(--secondary)",
-                            }}
-                          />
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className={`text-sm font-semibold truncate ${
+                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${badge.bg}`}
+                            title={`Priority: ${task.priority}`}
+                          >
+                            <span className="material-symbols-outlined text-[12px]">{badge.icon}</span>
+                            <span>{badge.label}</span>
+                          </div>
+
+                          <div className="flex flex-col min-w-0 flex-1 ml-1">
+                            <span className={`text-xs font-semibold truncate ${
                               isActive ? "text-primary font-bold" : "text-on-surface"
                             }`}>
                               {task.title}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: PRIORITY_DOT[task.priority] || "var(--secondary)" }}>{task.priority}</span>
-                              <span className="text-[10px] text-on-surface-variant">·</span>
-                              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider">{task.type}</span>
+                              <span className="text-[9px] text-on-surface-variant uppercase tracking-wider">{task.type}</span>
                               {renderDeadlineBadge(task.deadline)}
                               {renderTags(task.tags)}
                             </div>
@@ -560,14 +693,14 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           {isActive ? (
                             <>
-                              <span className="text-[9px] bg-primary/20 text-primary px-2 py-1 rounded-md uppercase font-bold tracking-widest animate-pulse hidden sm:inline-block">Live</span>
+                              <span className="text-[9px] bg-primary/20 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-widest animate-pulse hidden sm:inline-block">Live</span>
                               <button
                                 onClick={stopFocus}
                                 title="Stop Focus"
-                                className="bg-error-container text-on-error-container p-1.5 rounded-lg transition-all cursor-pointer"
+                                className="bg-error-container text-on-error-container p-1 rounded-lg transition-all cursor-pointer"
                               >
                                 <span className="material-symbols-outlined text-[16px]">stop</span>
                               </button>
@@ -576,15 +709,15 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
                             <button
                               onClick={() => handleStartFocusWithApps(task.id)}
                               title="Start Focus"
-                              className="bg-primary-container text-primary hover:bg-primary hover:text-on-primary p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                              className="bg-primary-container text-primary hover:bg-primary hover:text-on-primary p-1 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                             >
                               <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
                             </button>
                           )}
                           <button
                             onClick={() => handleCompleteTask(task.id)}
-                            title="Complete"
-                            className="bg-tertiary-container text-tertiary hover:bg-tertiary hover:text-on-tertiary p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                            title="Complete Task"
+                            className="bg-tertiary-container text-tertiary hover:bg-tertiary hover:text-on-tertiary p-1 rounded-lg transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-[16px]">check</span>
                           </button>
@@ -601,12 +734,12 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
         {/* Daily Insights Panel */}
         <div className="flex flex-col gap-gutter">
           <CollapsiblePanel title="Daily Insights" icon="lightbulb">
-            <div className="flex flex-col gap-4">
-              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
-                <span className="material-symbols-outlined text-secondary mt-0.5">trending_up</span>
+            <div className="flex flex-col gap-3">
+              <div className="bg-surface p-3.5 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-secondary mt-0.5 text-lg">trending_up</span>
                 <div>
-                  <p className="text-label-md font-bold text-on-surface">Peak Focus Time</p>
-                  <p className="text-body-sm text-on-surface-variant mt-1">
+                  <p className="text-label-md font-bold text-on-surface text-xs">Peak Focus Time</p>
+                  <p className="text-body-sm text-on-surface-variant mt-0.5 text-xs">
                     {analyticsData?.insights?.peakHour != null 
                       ? `You are most productive around ${analyticsData.insights.peakHour}:00. Schedule complex missions then.` 
                       : 'Not enough data to determine peak focus time.'}
@@ -614,11 +747,11 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
                 </div>
               </div>
               
-              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
-                <span className="material-symbols-outlined text-primary mt-0.5">info</span>
+              <div className="bg-surface p-3.5 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-primary mt-0.5 text-lg">info</span>
                 <div>
-                  <p className="text-label-md font-bold text-on-surface">Top Mission</p>
-                  <p className="text-body-sm text-on-surface-variant mt-1">
+                  <p className="text-label-md font-bold text-on-surface text-xs">Top Mission</p>
+                  <p className="text-body-sm text-on-surface-variant mt-0.5 text-xs">
                     {analyticsData?.insights?.topTask && analyticsData.insights.topTask !== 'None'
                       ? `You've spent the most time on "${analyticsData.insights.topTask}" today.`
                       : `No missions focused on yet today.`}
@@ -626,11 +759,11 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
                 </div>
               </div>
 
-              <div className="bg-surface p-4 rounded-xl border border-outline/10 flex gap-3">
-                <span className="material-symbols-outlined text-error mt-0.5">warning</span>
+              <div className="bg-surface p-3.5 rounded-xl border border-outline/10 flex gap-3">
+                <span className="material-symbols-outlined text-error mt-0.5 text-lg">warning</span>
                 <div>
-                  <p className="text-label-md font-bold text-on-surface">Distractions</p>
-                  <p className="text-body-sm text-on-surface-variant mt-1">
+                  <p className="text-label-md font-bold text-on-surface text-xs">Distractions</p>
+                  <p className="text-body-sm text-on-surface-variant mt-0.5 text-xs">
                     {analyticsData?.insights?.distractionCount != null
                       ? `You've drifted off-task ${analyticsData.insights.distractionCount} times today.`
                       : `No distractions detected yet.`}
@@ -641,6 +774,111 @@ export default function DashboardView({ taskList, tasksLoading, activeTask, isFo
           </CollapsiblePanel>
         </div>
       </div>
+
+      {/* Floating Batch Action Toolbar */}
+      {selectedTaskIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface-container-high border border-outline/30 px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 animate-fade-in">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-on-surface">
+            <span className="px-2 py-0.5 rounded-full bg-primary-container text-primary font-mono text-[11px]">
+              {selectedTaskIds.size}
+            </span>
+            <span>selected</span>
+          </div>
+          <div className="h-4 w-px bg-outline/20" />
+          <button
+            onClick={handleBatchComplete}
+            className="flex items-center gap-1 text-xs font-bold text-tertiary hover:bg-tertiary/10 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm">check_circle</span>
+            Complete All
+          </button>
+          <button
+            onClick={handleBatchDelete}
+            className="flex items-center gap-1 text-xs font-bold text-error hover:bg-error/10 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm">delete</span>
+            Delete All
+          </button>
+          <button
+            onClick={() => setSelectedTaskIds(new Set())}
+            className="text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 transition-all cursor-pointer"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Desktop Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 rounded-xl py-1.5 shadow-2xl border text-xs min-w-[190px] animate-fade-in backdrop-blur-md"
+          style={{
+            top: contextMenu.y,
+            left: contextMenu.x,
+            background: "var(--surface-container-high)",
+            borderColor: "var(--outline-variant)"
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1 font-bold truncate text-[11px] text-on-surface-variant border-b border-outline-variant/30 mb-1">
+            {contextMenu.task.title}
+          </div>
+          <button
+            onClick={() => {
+              handleStartFocusWithApps(contextMenu.task.id);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-surface-variant/40 text-on-surface cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm text-primary">rocket_launch</span>
+            Start Focus
+          </button>
+          <button
+            onClick={() => {
+              openTaskDetails(contextMenu.task);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-surface-variant/40 text-on-surface cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm text-secondary">tune</span>
+            View Details
+          </button>
+          <button
+            onClick={() => {
+              handleCompleteTask(contextMenu.task.id);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-surface-variant/40 text-on-surface cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm text-tertiary">check_circle</span>
+            Mark Complete
+          </button>
+          <button
+            onClick={() => {
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(contextMenu.task.title);
+                triggerToast("success", "Task title copied to clipboard");
+              }
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-surface-variant/40 text-on-surface cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm text-on-surface-variant">content_copy</span>
+            Copy Title
+          </button>
+          <div className="border-t border-outline-variant/30 my-1" />
+          <button
+            onClick={() => {
+              handleDeleteTask(contextMenu.task.id);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-error-container text-error cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-sm">delete</span>
+            Delete Task
+          </button>
+        </div>
+      )}
 
       {showAppModal && (
         <AppSelectionModal

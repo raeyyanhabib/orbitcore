@@ -1,13 +1,14 @@
 // src/renderer/App.jsx
 // Core React component. Coordinates global state, window IPC interfaces, and sub-view renders.
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DashboardView from "./components/DashboardView.jsx";
 import OrbitView from "./components/OrbitView.jsx";
 import AnalyticsView from "./components/AnalyticsView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 import FirstRunModal from "./components/FirstRunModal.jsx";
 import RemindersOverlay from "./components/RemindersOverlay.jsx";
+import FocusModeOverlay from "./components/FocusModeOverlay.jsx";
 import { useTheme } from "./hooks/useTheme";
 import THEMES from "./themes";
 
@@ -21,6 +22,7 @@ export default function App() {
   const [focusMessages, setFocusMessages] = useState([]);
   const [isFocusActive, setIsFocusActive] = useState(false);
   const [monitorUpdate, setMonitorUpdate] = useState(null);
+  const [overlayDismissedApp, setOverlayDismissedApp] = useState(null);
   const [todayFocusSeconds, setTodayFocusSeconds] = useState(0);
   const [monitorStatus, setMonitorStatus] = useState("connected");
   const [toast, setToast] = useState({ show: false, type: "success", message: "" });
@@ -52,12 +54,45 @@ export default function App() {
     }
   };
 
-  const triggerToast = (type, message) => {
+  const triggerToast = useCallback((type, message) => {
     setToast({ show: true, type, message });
     setTimeout(() => {
       setToast({ show: false, type: "success", message: "" });
     }, 4000);
-  };
+  }, []);
+
+  const handlePauseFocus = useCallback(() => {
+    window.electronAPI.sendTaskAction("stopFocus");
+    triggerToast("success", "Focus session paused.");
+  }, [triggerToast]);
+
+  const handleModeTransition = useCallback((targetMode) => {
+    setCurrentMode(targetMode);
+    window.electronAPI.sendTaskAction("changeMode", { mode: targetMode });
+  }, []);
+
+  // Global desktop keyboard shortcuts: Ctrl+1..3 (views), Ctrl+O (toggle 3D Orbit mode)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "o" || e.key === "O") {
+          e.preventDefault();
+          handleModeTransition(currentMode === "orbit" ? "dashboard" : "orbit");
+        } else if (e.key === "1") {
+          e.preventDefault();
+          setActiveTab("tasks");
+        } else if (e.key === "2") {
+          e.preventDefault();
+          setActiveTab("analytics");
+        } else if (e.key === "3") {
+          e.preventDefault();
+          setActiveTab("settings");
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalShortcuts);
+    return () => window.removeEventListener("keydown", handleGlobalShortcuts);
+  }, [currentMode, handleModeTransition]);
 
   useEffect(() => {
     window.electronAPI.onReceiveFromMain("tasks-list", (tasks) => {
@@ -89,6 +124,17 @@ export default function App() {
       
       if (update.isOnTask) {
         setTodayFocusSeconds(prev => prev + (update.interval || 3));
+        setOverlayDismissedApp(null); // Reset dismissal once user returns to approved work
+      }
+    });
+
+    // Handle soft advisory and hard block interventions emitted by Python subprocess
+    window.electronAPI.onReceiveFromMain("focus-intervention", (data) => {
+      console.log("⚠️ Focus intervention:", data);
+      if (data?.mode === "hard_block") {
+        triggerToast("error", `⛔ Hard Block: Focus locked to "${data.taskTitle || "Task"}". Returning window focus!`);
+      } else {
+        triggerToast("error", `⚠️ Advisory Alert: Detected detour to "${data.appName || "another app"}".`);
       }
     });
 
@@ -103,6 +149,7 @@ export default function App() {
       setIsFocusActive(false);
       setActiveTask(null);
       setMonitorUpdate(null);
+      setOverlayDismissedApp(null);
     });
 
     window.electronAPI.onReceiveFromMain("focus-messages", (msgs) => {
@@ -157,7 +204,7 @@ export default function App() {
       setAnalyticsLoading(true);
       window.electronAPI.sendTaskAction("getAnalytics", { dayRange: 7 });
     }, 500);
-  }, []);
+  }, [triggerToast]);
 
   useEffect(() => {
     let heartbeatTimeout;
@@ -172,11 +219,6 @@ export default function App() {
       clearTimeout(heartbeatTimeout);
     };
   }, []);
-
-  const handleModeTransition = (targetMode) => {
-    setCurrentMode(targetMode);
-    window.electronAPI.sendTaskAction("changeMode", { mode: targetMode });
-  };
 
   if (isInitializing) {
     return (
@@ -200,6 +242,15 @@ export default function App() {
           settings={settings}
           onBackToDashboard={() => handleModeTransition("dashboard")}
         />
+        {isFocusActive && monitorUpdate && !monitorUpdate.isOnTask && overlayDismissedApp !== monitorUpdate.appName && (
+          <FocusModeOverlay 
+            activeTask={activeTask}
+            monitorUpdate={monitorUpdate}
+            focusMessages={focusMessages}
+            onDismiss={() => setOverlayDismissedApp(monitorUpdate.appName)}
+            onPauseFocus={handlePauseFocus}
+          />
+        )}
         {toast.show && (
           <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-lg shadow-lg text-xs font-semibold backdrop-blur-md animate-fade-in ${
             toast.type === "success" 
@@ -373,6 +424,16 @@ export default function App() {
 
         {showFirstRunModal && (
           <FirstRunModal onComplete={() => setShowFirstRunModal(false)} />
+        )}
+
+        {isFocusActive && monitorUpdate && !monitorUpdate.isOnTask && overlayDismissedApp !== monitorUpdate.appName && (
+          <FocusModeOverlay 
+            activeTask={activeTask}
+            monitorUpdate={monitorUpdate}
+            focusMessages={focusMessages}
+            onDismiss={() => setOverlayDismissedApp(monitorUpdate.appName)}
+            onPauseFocus={handlePauseFocus}
+          />
         )}
 
         <RemindersOverlay />

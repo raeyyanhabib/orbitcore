@@ -101,7 +101,7 @@ function buildSun(scene, sunSize = 1) {
 
 function buildOrbitRing(scene, radius) {
   const points = [];
-  const segments = 128;
+  const segments = 96;
   for (let i = 0; i <= segments; i++) {
     const theta = (i / segments) * Math.PI * 2;
     points.push(new THREE.Vector3(Math.cos(theta) * radius, 0, Math.sin(theta) * radius));
@@ -110,7 +110,7 @@ function buildOrbitRing(scene, radius) {
   const mat = new THREE.LineBasicMaterial({
     color: 0x3a4a6a,
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.35,
   });
   const ring = new THREE.Line(geo, mat);
   scene.add(ring);
@@ -122,7 +122,7 @@ function buildPlanet(scene, task, index, planetScale = 1) {
   const orbitRadius = 6.0 + index * cfg.orbitFactor;
   const startAngle = Math.random() * Math.PI * 2;
 
-  buildOrbitRing(scene, orbitRadius);
+  const orbitRing = buildOrbitRing(scene, orbitRadius);
 
   const planetMat = new THREE.MeshStandardMaterial({
     color: task.color ? new THREE.Color(task.color) : new THREE.Color(cfg.color),
@@ -161,6 +161,7 @@ function buildPlanet(scene, task, index, planetScale = 1) {
 
   return {
     mesh: planet,
+    ring: orbitRing,
     radius: orbitRadius,
     speed: cfg.speed,
     angle: startAngle,
@@ -170,25 +171,46 @@ function buildPlanet(scene, task, index, planetScale = 1) {
   };
 }
 
+/**
+ * Recursively disposes an Object3D hierarchy (geometries and materials)
+ * to completely eliminate WebGL memory leaks.
+ */
+function disposeHierarchy(obj) {
+  if (!obj) return;
+  obj.traverse((child) => {
+    if (child.geometry) {
+      child.geometry.dispose();
+    }
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m) => m && m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  });
+}
+
 export default function OrbitView({ taskList, settings = {}, onBackToDashboard }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
   const sunRef = useRef(null);
   const planetsRef = useRef([]);
   const starLayersRef = useRef([]);
   const [hoveredTask, setHoveredTask] = useState(null);
 
+  const sunSize = parseFloat(settings.orbitSunSize || 100) / 100;
+  const planetScale = parseFloat(settings.orbitPlanetSize || 1);
+  const opacityVal = parseFloat(settings.orbitOpacity || 0.75);
+
+  // 1. One-time Scene & Renderer initialization on mount
   useEffect(() => {
     if (!mountRef.current) return;
     const el = mountRef.current;
-    const width = el.clientWidth;
-    const height = el.clientHeight;
-
-    // Get settings with defaults
-    const sunSize = parseFloat(settings.orbitSunSize || 100) / 100;
-    const planetScale = parseFloat(settings.orbitPlanetSize || 1);
-    const opacityVal = parseFloat(settings.orbitOpacity || 0.75);
+    const width = el.clientWidth || window.innerWidth;
+    const height = el.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -197,8 +219,9 @@ export default function OrbitView({ taskList, settings = {}, onBackToDashboard }
     const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
     camera.position.set(0, 20, 28);
     camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -215,18 +238,16 @@ export default function OrbitView({ taskList, settings = {}, onBackToDashboard }
     const { core: sunCore, halo1, halo2 } = buildSun(scene, sunSize);
     sunRef.current = { core: sunCore, halo1, halo2 };
 
-    const activeTasks = taskList.filter(t => !t.is_completed);
-    planetsRef.current = activeTasks.map((task, idx) => buildPlanet(scene, task, idx, planetScale));
-
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const handleMouseMove = (e) => {
+      if (!cameraRef.current) return;
       const rect = el.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const meshes = planetsRef.current.map(p => p.mesh);
+      raycaster.setFromCamera(mouse, cameraRef.current);
+      const meshes = planetsRef.current.map(p => p.mesh).filter(Boolean);
       const intersects = raycaster.intersectObjects(meshes);
       if (intersects.length > 0) {
         const hit = intersects[0].object;
@@ -242,47 +263,53 @@ export default function OrbitView({ taskList, settings = {}, onBackToDashboard }
     };
 
     el.addEventListener("mousemove", handleMouseMove);
-    el.style.opacity = opacityVal;
 
+    // 30 FPS Throttled Delta-Time Render Loop
     let animId = null;
-    let lastTime = 0;
-    const FPS_INTERVAL = 1000 / 30;
+    let lastFrameTime = performance.now();
+    const TARGET_FPS = 30;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
-    const renderLoop = (now) => {
+    const renderLoop = (timestamp) => {
       animId = requestAnimationFrame(renderLoop);
-      if (now - lastTime < FPS_INTERVAL) return;
-      lastTime = now;
+      const elapsed = timestamp - lastFrameTime;
+      if (elapsed < FRAME_INTERVAL) return;
 
-      const pulse = 1 + Math.sin(now * 0.0015) * 0.04;
+      const dt = Math.min(elapsed / 1000, 0.1);
+      lastFrameTime = timestamp - (elapsed % FRAME_INTERVAL);
+
+      const pulse = 1 + Math.sin(timestamp * 0.0015) * 0.04;
       if (sunRef.current) {
-        sunRef.current.core.rotation.y += 0.004;
+        sunRef.current.core.rotation.y += 0.24 * dt;
         sunRef.current.halo1.scale.setScalar(pulse);
         sunRef.current.halo2.scale.setScalar(pulse * 1.06);
       }
 
       starLayersRef.current.forEach((s, i) => {
-        s.rotation.y += 0.00015 * (i + 1);
+        s.rotation.y += (0.01 * (i + 1)) * dt;
       });
 
       planetsRef.current.forEach((p) => {
-        p.angle += p.speed;
+        p.angle += p.speed * 60 * dt;
         p.mesh.position.x = Math.cos(p.angle) * p.radius;
         p.mesh.position.z = Math.sin(p.angle) * p.radius;
-        p.mesh.rotation.y += 0.018;
+        p.mesh.rotation.y += 1.0 * dt;
       });
 
-      renderer.render(scene, camera);
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
     };
 
     animId = requestAnimationFrame(renderLoop);
 
     const handleResize = () => {
-      if (!el || !renderer) return;
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      if (!el || !rendererRef.current || !cameraRef.current) return;
+      const w = el.clientWidth || window.innerWidth;
+      const h = el.clientHeight || window.innerHeight;
+      cameraRef.current.aspect = w / h;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
     };
     window.addEventListener("resize", handleResize);
 
@@ -290,19 +317,51 @@ export default function OrbitView({ taskList, settings = {}, onBackToDashboard }
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", handleResize);
       el.removeEventListener("mousemove", handleMouseMove);
-      if (renderer && el.contains(renderer.domElement)) {
-        el.removeChild(renderer.domElement);
+      if (rendererRef.current && el.contains(rendererRef.current.domElement)) {
+        el.removeChild(rendererRef.current.domElement);
       }
-      scene.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-          else obj.material.dispose();
-        }
-      });
-      renderer.dispose();
+      if (sceneRef.current) {
+        sceneRef.current.traverse((obj) => {
+          disposeHierarchy(obj);
+        });
+      }
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
     };
-  }, [taskList, settings]);
+  }, []);
+
+  // 2. Separate Dynamic Effect: Rebuild ONLY planets and orbit rings when taskList or planetScale changes
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    // Dispose old planet geometries, materials, and lines cleanly
+    planetsRef.current.forEach((p) => {
+      if (p.mesh) {
+        scene.remove(p.mesh);
+        disposeHierarchy(p.mesh);
+      }
+      if (p.ring) {
+        scene.remove(p.ring);
+        disposeHierarchy(p.ring);
+      }
+    });
+    planetsRef.current = [];
+
+    // Reconstruct updated planets without tearing down WebGL context or stars
+    const activeTasks = taskList.filter((t) => !t.is_completed);
+    planetsRef.current = activeTasks.map((task, idx) =>
+      buildPlanet(scene, task, idx, planetScale)
+    );
+  }, [taskList, planetScale]);
+
+  // 3. Update container opacity dynamically
+  useEffect(() => {
+    if (mountRef.current) {
+      mountRef.current.style.opacity = opacityVal;
+    }
+  }, [opacityVal]);
 
   const PRIORITY_COLORS = { High: "text-red-400", Medium: "text-orange-400", Low: "text-teal-400" };
 

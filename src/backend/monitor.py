@@ -38,13 +38,35 @@ try:
 except ImportError:
     pass
 
-# Global execution variables
+# Global execution and cached settings variables
 activeTask = None
 focusActive = False
 monitorThread = None
 soundThread = None
 dbFilePath = "orbit_tracker.db"
 logFilePath = "orbit_tracker.log"
+
+# Cached settings to avoid disk I/O on every monitoring tick
+cachedCheckInterval = 3.0
+cachedFocusModeType = "advisory"  # "advisory" (soft alert) or "hard_block" (active focus lock)
+cachedResearchEnabled = True
+
+
+def sanitizeWindowTitle(title):
+    """
+    Sanitizes active window titles:
+    - Strips non-printable / control characters.
+    - Removes web query strings (?q=, ?v=) to safeguard user privacy.
+    - Safely truncates to 60 characters before logging or database persistence.
+    """
+    if not title:
+        return ""
+    # Filter printable characters
+    cleaned = "".join(ch for ch in title if ch.isprintable())
+    # Strip URL parameters
+    if "?" in cleaned:
+        cleaned = cleaned.split("?")[0]
+    return cleaned.strip()[:60]
 
 
 def writeToLog(level, message):
@@ -97,7 +119,7 @@ def getActiveWindowDetails():
         processName = process.name().lower()
         windowTitle = win32gui.GetWindowText(windowHandle)
         
-        return processName, windowTitle
+        return processName, sanitizeWindowTitle(windowTitle)
     except Exception as error:
         writeToLog("WARNING", f"Failed to retrieve active window: {str(error)}")
         return None, None
@@ -242,8 +264,9 @@ def monitorFocusLoop():
     """
     Evaluates foreground application process name and window title at intervals.
     Logs focus sessions, checks target apps lists, and sends updates to Electron.
+    Uses in-memory cached settings and batched explicit SQLite transactions to minimize disk I/O.
     """
-    global activeTask, focusActive, dbFilePath
+    global activeTask, focusActive, dbFilePath, cachedCheckInterval, cachedFocusModeType
     
     writeToLog("INFO", "Foreground application monitoring thread started.")
     
@@ -253,22 +276,9 @@ def monitorFocusLoop():
     
     # Run loop while focus mode is active and there is a target active task
     while focusActive and activeTask:
-        connection = None
         try:
-            # Establish database connection to read settings
-            connection = db.getDatabaseConnection(dbFilePath)
-            
-            # Fetch current settings map
-            settingsMap = db.getSettings(connection)
-            
-            # Read checkInterval from DB (default to 3 seconds)
-            try:
-                checkInterval = float(settingsMap.get("checkInterval", 3.0))
-                # Validate interval constraints (1 to 10 seconds)
-                if checkInterval < 1.0 or checkInterval > 10.0:
-                    checkInterval = 3.0
-            except (ValueError, TypeError):
-                checkInterval = 3.0
+            # Use dynamically updated cached interval (clamped safely between 1.0 and 10.0s)
+            checkInterval = max(1.0, min(10.0, float(cachedCheckInterval)))
             
             # Fetch active foreground process details
             appName, windowTitle = getActiveWindowDetails()
@@ -281,49 +291,52 @@ def monitorFocusLoop():
                 # Verify if active process is whitelisted (default to 1 if no target apps set)
                 isOnTask = 1 if (not targetApps or appName in targetApps) else 0
                 
-                # Truncate window title to 60 characters to prevent sensitive data logging
-                truncatedTitle = windowTitle[:60] if windowTitle else ""
-                
                 # Append to batch
                 batchLogs.append({
                     "task_id": activeTask["id"],
                     "duration_seconds": int(checkInterval),
                     "is_on_task": isOnTask,
                     "app_name": appName,
-                    "window_title": truncatedTitle
+                    "window_title": windowTitle
                 })
                 
                 currentTime = time.time()
-                if currentTime - lastBatchTime >= batchInterval:
-                    if batchLogs:
-                        db.logTimeSpentBatch(connection, batchLogs)
+                # Batch write when either 5 entries are reached or batchInterval has elapsed
+                if len(batchLogs) >= 5 or (currentTime - lastBatchTime >= batchInterval):
+                    try:
+                        conn = db.getDatabaseConnection(dbFilePath)
+                        db.logTimeSpentBatch(conn, batchLogs)
+                        conn.close()
                         batchLogs.clear()
-                    lastBatchTime = currentTime
+                        lastBatchTime = currentTime
+                    except Exception as dbErr:
+                        writeToLog("ERROR", f"Error in batch logging transaction: {str(dbErr)}")
+
+                # Check for Hard Block Mode vs Advisory Mode when off-task
+                if isOnTask == 0:
+                    sendToElectron("focus-intervention", {
+                        "mode": cachedFocusModeType,
+                        "appName": appName,
+                        "windowTitle": windowTitle,
+                        "taskId": activeTask["id"],
+                        "taskTitle": activeTask.get("title", "")
+                    })
                 
                 # Build status update payload to send to Electron renderer
                 updatePayload = {
                     "taskId": activeTask["id"],
                     "appName": appName,
-                    "windowTitle": truncatedTitle,
+                    "windowTitle": windowTitle,
                     "isOnTask": isOnTask == 1,
-                    "interval": int(checkInterval)
+                    "interval": int(checkInterval),
+                    "focusModeType": cachedFocusModeType
                 }
                 
                 # Send the focus update payload via stdout stream
                 sendToElectron("monitor-update", updatePayload)
             
-            # Close connection cleanly
-            connection.close()
-            
         except Exception as error:
-            # Log any exception in loop execution
             writeToLog("ERROR", f"Exception in window monitor loop: {str(error)}")
-            
-            # Close database connection if left open
-            if connection:
-                connection.close()
-            
-            # Default sleep interval on crash
             checkInterval = 3.0
             
         # Dynamic sleep throttling using checkInterval setting
@@ -332,9 +345,10 @@ def monitorFocusLoop():
     # When focus mode ends, flush any remaining logs
     if batchLogs:
         try:
-            connection = db.getDatabaseConnection(dbFilePath)
-            db.logTimeSpentBatch(connection, batchLogs)
-            connection.close()
+            conn = db.getDatabaseConnection(dbFilePath)
+            db.logTimeSpentBatch(conn, batchLogs)
+            conn.close()
+            batchLogs.clear()
         except Exception as error:
             writeToLog("ERROR", f"Exception flushing batch logs: {str(error)}")
 
@@ -342,24 +356,39 @@ def monitorFocusLoop():
 def heartbeatThread():
     """
     Background daemon thread that emits a heartbeat event to Electron every 5 seconds.
+    Transmits health metrics, active focus status, and cached intervals.
     """
     while True:
         try:
-            # Broadcast heartbeat update to signify that Python monitor is running
-            sendToElectron("heartbeat", {"status": "alive"})
+            sendToElectron("heartbeat", {
+                "status": "alive",
+                "timestamp": time.time(),
+                "focusActive": focusActive,
+                "activeTaskId": activeTask["id"] if activeTask else None,
+                "checkInterval": cachedCheckInterval,
+                "focusModeType": cachedFocusModeType
+            })
         except Exception:
             pass
-        
-        # Wait 5 seconds before emitting next heartbeat
         time.sleep(5)
+
+
+# Whitelist of acceptable action commands from Electron
+ALLOWED_ACTIONS = {
+    "setPaths", "getAllTasks", "createTask", "editTask", "completeTask", "deleteTask",
+    "batchCompleteTasks", "batchDeleteTasks", "startFocus", "stopFocus", "saveSetting",
+    "getSettings", "getAnalytics", "getResearch", "getTaskTimeBreakdown", "exportLogs",
+    "exportSettingsFile", "logEntry"
+}
 
 
 def handleIncomingActions():
     """
     Continuously listens for JSON instructions on standard input (sys.stdin).
-    Triggers DB transactions, starts/stops threads, and writes feedback.
+    Enforces strict schema validation on incoming commands and coordinates DB transactions.
     """
     global activeTask, focusActive, monitorThread, soundThread, dbFilePath, logFilePath
+    global cachedCheckInterval, cachedFocusModeType, cachedResearchEnabled
     
     # Reconfigure streams to unbuffered UTF-8 to prevent Windows IPC buffering locks
     if hasattr(sys.stdin, 'reconfigure'):
@@ -369,7 +398,6 @@ def handleIncomingActions():
 
     writeToLog("INFO", "Listening for Electron instructions on stdin...")
     
-    # Process commands received from Electron stdout pipe line-by-line
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -378,38 +406,56 @@ def handleIncomingActions():
         try:
             # Parse command line JSON string
             message = json.loads(line)
+            
+            # 1. Schema Validation
+            if not isinstance(message, dict):
+                writeToLog("WARNING", "Dropped malformed non-object JSON payload.")
+                continue
+                
             action = message.get("action")
             payload = message.get("payload", {})
             
-            writeToLog("INFO", f"Received action: {action}")
+            if not isinstance(action, str) or action not in ALLOWED_ACTIONS:
+                writeToLog("WARNING", f"Blocked unauthorized or unknown action: {action}")
+                continue
+                
+            if not isinstance(payload, dict):
+                writeToLog("WARNING", f"Malformed payload for action '{action}'; resetting to empty dict.")
+                payload = {}
             
-            # IMPORTANT: For setPaths, update path variables BEFORE opening the DB connection.
-            # Otherwise, the connection opens on the old default path and createTables
-            # runs on the wrong database file, leaving the real DB uninitialized.
+            writeToLog("INFO", f"Received validated action: {action}")
+            
             if action == "setPaths":
                 dbFilePath = payload.get("dbPath", dbFilePath)
                 logFilePath = payload.get("logPath", logFilePath)
                 writeToLog("INFO", f"Paths updated — DB: {dbFilePath}, Log: {logFilePath}")
             
-            # Open database connection using the (now-correct) dbFilePath
+            # Open database connection
             connection = db.getDatabaseConnection(dbFilePath)
             
             if action == "setPaths":
                 try:
-                    # Initialize database schema on the correct database file
                     db.createTables(connection)
                     
-                    # Parse retention settings for pruning old time logs
+                    # Read initial settings to prime in-memory cached variables
                     settingsMap = db.getSettings(connection)
                     try:
                         retentionDays = int(settingsMap.get("retentionDays", 90))
                     except (ValueError, TypeError):
                         retentionDays = 90
+                        
+                    try:
+                        cachedCheckInterval = float(settingsMap.get("checkInterval", 3.0))
+                    except (ValueError, TypeError):
+                        cachedCheckInterval = 3.0
+                        
+                    cachedFocusModeType = settingsMap.get("focusModeType", "advisory")
+                    cachedResearchEnabled = settingsMap.get("researchEnabled", "true").lower() == "true"
                     
                     # Delete logs exceeding threshold
                     db.pruneOldLogs(connection, retentionDays)
                     
-                    writeToLog("INFO", f"Database initialized successfully. DB: {dbFilePath}")
+                    writeToLog("INFO", f"Database initialized. Retention: {retentionDays}d, Interval: {cachedCheckInterval}s")
                     sendToElectron("paths-initialized", {"status": "success"})
                     sendToElectron("paths-initialized-from-python", {"status": "success"})
                 except Exception as error:
@@ -417,18 +463,20 @@ def handleIncomingActions():
                     sendToElectron("paths-initialized", {"status": "error", "error": str(error)})
                 
             elif action == "getAllTasks":
-                # Fetch all tasks and send to frontend
                 tasksList = db.getAllTasks(connection)
                 sendToElectron("tasks-list", tasksList)
                 
             elif action == "createTask":
-                # Create a new task and refresh the task list for the frontend
                 try:
-                    writeToLog("INFO", f"Creating task: {payload.get('title')} (priority={payload.get('priority')})")
-                    
+                    rawTitle = payload.get("title", "")
+                    if not rawTitle or not rawTitle.strip():
+                        writeToLog("WARNING", "createTask rejected: empty title.")
+                        continue
+                        
+                    writeToLog("INFO", f"Creating task: {rawTitle.strip()}")
                     taskId = db.createNewTask(
                         connection,
-                        title=payload.get("title"),
+                        title=rawTitle.strip(),
                         description=payload.get("description", ""),
                         notes=payload.get("notes", ""),
                         priority=payload.get("priority", "Medium"),
@@ -440,37 +488,26 @@ def handleIncomingActions():
                         deadline=payload.get("deadline")
                     )
                     
-                    writeToLog("INFO", f"Task created successfully with ID: {taskId}")
-                    
-                    # Send updated task list back to renderer
+                    # Send updated task list
                     tasksList = db.getAllTasks(connection)
-                    writeToLog("INFO", f"Sending updated tasks-list to Electron ({len(tasksList)} tasks)")
                     sendToElectron("tasks-list", tasksList)
                     
-                    # Fetch app settings map to check research state
-                    settingsMap = db.getSettings(connection)
-                    researchEnabled = settingsMap.get("researchEnabled", "true").lower() == "true"
-                    
                     # Trigger async web research thread only if enabled
-                    if researchEnabled:
+                    if cachedResearchEnabled:
                         researchThread = threading.Thread(
                             target=performWebResearch,
-                            args=(taskId, payload.get("title"), payload.get("description", "")),
+                            args=(taskId, rawTitle.strip(), payload.get("description", "")),
                             daemon=True
                         )
                         researchThread.start()
                 except Exception as createError:
                     writeToLog("ERROR", f"Failed to create task: {str(createError)}")
-                    traceback.print_exc(file=sys.stderr)
                 
             elif action == "completeTask":
-                # Mark task completed in SQLite
                 taskId = int(payload.get("taskId"))
                 completedAt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
                 db.updateTask(connection, taskId, is_completed=1, completed_at=completedAt)
                 
-                # If completing the active focus task, stop focus mode
                 if activeTask and activeTask["id"] == taskId:
                     focusActive = False
                     activeTask = None
@@ -479,13 +516,34 @@ def handleIncomingActions():
                 tasksList = db.getAllTasks(connection)
                 sendToElectron("tasks-list", tasksList)
                 
+            elif action == "batchCompleteTasks":
+                taskIds = payload.get("taskIds", [])
+                if taskIds:
+                    db.batchCompleteTasks(connection, taskIds)
+                    if activeTask and activeTask["id"] in [int(tid) for tid in taskIds]:
+                        focusActive = False
+                        activeTask = None
+                        sendToElectron("focus-stopped", {"status": "success"})
+                    tasksList = db.getAllTasks(connection)
+                    sendToElectron("tasks-list", tasksList)
+                    
+            elif action == "batchDeleteTasks":
+                taskIds = payload.get("taskIds", [])
+                if taskIds:
+                    db.batchDeleteTasks(connection, taskIds)
+                    if activeTask and activeTask["id"] in [int(tid) for tid in taskIds]:
+                        focusActive = False
+                        activeTask = None
+                        sendToElectron("focus-stopped", {"status": "success"})
+                    tasksList = db.getAllTasks(connection)
+                    sendToElectron("tasks-list", tasksList)
+
             elif action == "editTask":
                 taskId = int(payload.get("taskId"))
                 updates = payload.get("updates", {})
                 if updates:
                     db.updateTask(connection, taskId, **updates)
                     
-                # If editing the active focus task, update activeTask
                 if activeTask and activeTask["id"] == taskId:
                     tasks = db.getAllTasks(connection)
                     activeTask = next((t for t in tasks if t["id"] == taskId), None)
@@ -494,7 +552,6 @@ def handleIncomingActions():
                 sendToElectron("tasks-list", tasksList)
                 
             elif action == "deleteTask":
-                # Delete task
                 taskId = int(payload.get("taskId"))
                 db.deleteTask(connection, taskId)
                 
@@ -507,17 +564,13 @@ def handleIncomingActions():
                 sendToElectron("tasks-list", tasksList)
                 
             elif action == "startFocus":
-                # Start focus monitoring for a task
                 taskId = int(payload.get("taskId"))
-                
-                # Locate task details from database
                 tasks = db.getAllTasks(connection)
                 targetTask = next((t for t in tasks if t["id"] == taskId), None)
                 
                 if targetTask:
-                    # Deactivate previous loops if running
                     focusActive = False
-                    time.sleep(0.5)
+                    time.sleep(0.3)
                     
                     activeTask = targetTask
                     focusActive = True
@@ -536,22 +589,31 @@ def handleIncomingActions():
                     writeToLog("WARNING", f"Focus requested for non-existent task: {taskId}")
                     
             elif action == "stopFocus":
-                # Stop active tracking loops
                 focusActive = False
                 activeTask = None
                 sendToElectron("focus-stopped", {"status": "success"})
                 writeToLog("INFO", "Focus session stopped by user command.")
                 
             elif action == "saveSetting":
-                # Save settings key-value pair to database
-                db.saveSetting(connection, payload.get("key"), payload.get("value"))
+                key = str(payload.get("key"))
+                val = str(payload.get("value"))
+                db.saveSetting(connection, key, val)
                 
-                # Broadcast updated settings map back to Electron renderer to sync state
+                # Update in-memory cached variables immediately for dynamic responsiveness
+                if key == "checkInterval":
+                    try:
+                        cachedCheckInterval = max(1.0, min(10.0, float(val)))
+                    except (ValueError, TypeError):
+                        pass
+                elif key == "focusModeType":
+                    cachedFocusModeType = val
+                elif key == "researchEnabled":
+                    cachedResearchEnabled = val.lower() == "true"
+                    
                 settingsMap = db.getSettings(connection)
                 sendToElectron("settings-map", settingsMap)
                 
             elif action == "getSettings":
-                # Fetch settings Map
                 settingsMap = db.getSettings(connection)
                 sendToElectron("settings-map", settingsMap)
 
@@ -563,11 +625,8 @@ def handleIncomingActions():
                 sendToElectron("analytics-data", analytics)
 
             elif action == "getResearch":
-                # Fetch cached research guidelines for a task from database
                 taskId = int(payload.get("taskId"))
                 tips = db.getWebResearch(connection, taskId)
-                
-                # Emit research-complete payload if cache exists
                 if tips:
                     sendToElectron("research-complete", {"taskId": taskId, "tips": tips})
 
@@ -577,24 +636,18 @@ def handleIncomingActions():
                 sendToElectron("task-time-breakdown", breakdown)
                     
             elif action == "exportLogs":
-                # Export time logging statistics to CSV
                 desktopPath = os.path.join(os.path.expanduser("~"), "Desktop")
                 csvFilePath = os.path.join(desktopPath, "orbit_focus_logs.csv")
-                
                 try:
-                    # Write all time logs to the desktop CSV file path
                     db.exportLogsToCSV(connection, csvFilePath)
                     writeToLog("INFO", f"Logs successfully exported to {csvFilePath}")
                 except Exception as error:
                     writeToLog("ERROR", f"Failed to export focus logs to CSV: {str(error)}")
                     
             elif action == "exportSettingsFile":
-                # Save settings JSON configuration to selected file path
                 filePath = payload.get("filePath")
                 settingsMap = db.getSettings(connection)
-                
                 try:
-                    # Write settings dictionary as JSON file
                     with open(filePath, "w", encoding="utf-8") as f:
                         json.dump(settingsMap, f, indent=2)
                     writeToLog("INFO", f"Settings successfully exported to {filePath}")
@@ -604,14 +657,10 @@ def handleIncomingActions():
                     sendToElectron("settings-exported", {"success": False, "error": str(error)})
                     
             elif action == "logEntry":
-                # Centralized single-writer log entry delegation
                 level = payload.get("level", "INFO")
                 message = payload.get("message", "")
-                
-                # Append Electron log message directly to file to prevent file locks
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 logLine = f"[{timestamp}] [{level}] {message}\n"
-                
                 try:
                     with open(logFilePath, "a", encoding="utf-8") as logFile:
                         logFile.write(logLine)

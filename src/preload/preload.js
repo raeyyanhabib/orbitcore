@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "editTask",
       "completeTask",
       "deleteTask",
+      "batchCompleteTasks",
+      "batchDeleteTasks",
       "startFocus",
       "stopFocus",
       "getSettings",
@@ -35,13 +37,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "getTaskTimeBreakdown"
     ];
 
-    // Check if the requested action is present in the whitelisted allowedActions array.
-    if (allowedActions.includes(action)) {
-      // Forward the safe action and its payload to the Electron main process via IPC.
-      ipcRenderer.send("task-action", { action, payload });
+    // Schema Validation: Ensure action is string and payload is object or undefined
+    if (typeof action === "string" && allowedActions.includes(action)) {
+      const sanitizedPayload = typeof payload === "object" && payload !== null ? payload : {};
+      ipcRenderer.send("task-action", { action, payload: sanitizedPayload });
     } else {
-      // Print warning message for blocked unauthorized attempts.
-      console.warn(`Blocked unauthorized IPC action attempt: ${action}`);
+      console.warn(`Blocked unauthorized or malformed IPC action attempt: ${action}`);
     }
 
   },
@@ -66,11 +67,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
       "deadline-reminder",
       "running-apps",
       "data-directory",
-      "task-time-breakdown"
+      "task-time-breakdown",
+      "focus-intervention"
     ];
 
     // Verify if the channel is whitelisted.
-    if (allowedChannels.includes(channel)) {
+    if (typeof channel === "string" && allowedChannels.includes(channel) && typeof callback === "function") {
       // Clear previous event listeners for this channel to prevent callback duplication and memory leaks.
       ipcRenderer.removeAllListeners(channel);
 

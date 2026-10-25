@@ -15,6 +15,7 @@ let pyProcess = null;
 
 // Track python subprocess spawn attempts inside the last 60 seconds to prevent endless crash loops
 let spawnAttempts = [];
+let lastPythonHeartbeat = Date.now();
 
 // Paths resolved after app.getPath("userData") is available
 let dbFilePath = "";
@@ -198,8 +199,23 @@ function spawnPythonSubprocess() {
       const message = JSON.parse(line);
       const { channel, data } = message;
 
+      if (channel === "heartbeat") {
+        lastPythonHeartbeat = Date.now();
+      }
+
       if (channel === "paths-initialized-from-python") {
         ipcMain.emit("paths-initialized-from-python");
+      }
+
+      if (channel === "focus-intervention" && data && data.mode === "hard_block") {
+        // Enforce hard block: bring active OrbitCore window to front to prevent distraction
+        const activeWin = (orbitWindow && !orbitWindow.isDestroyed() && orbitWindow.isVisible())
+          ? orbitWindow
+          : dashboardWindow;
+        if (activeWin && !activeWin.isDestroyed()) {
+          activeWin.show();
+          activeWin.focus();
+        }
       }
 
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
@@ -234,6 +250,19 @@ function spawnPythonSubprocess() {
     }, 2000);
   });
 }
+
+// Watchdog timer: checks Python heartbeat liveness every 10 seconds
+setInterval(() => {
+  if (pyProcess && !app.isQuitting) {
+    const elapsed = Date.now() - lastPythonHeartbeat;
+    if (elapsed > 20000) {
+      writeLog("WARNING", `Python backend heartbeat overdue (${Math.round(elapsed / 1000)}s).`);
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        dashboardWindow.webContents.send("monitor-status", { status: "offline" });
+      }
+    }
+  }
+}, 10000);
 
 
 /**
@@ -365,6 +394,17 @@ function createDashboardWindow() {
 
   attachNavigationGuard(dashboardWindow);
 
+  dashboardWindow.on("close", (event) => {
+    if (!app.isQuitting) {
+      if (orbitWindow && !orbitWindow.isDestroyed() && orbitWindow.isVisible()) {
+        event.preventDefault();
+        dashboardWindow.hide();
+      } else {
+        app.quit();
+      }
+    }
+  });
+
   dashboardWindow.on("closed", () => {
     dashboardWindow = null;
   });
@@ -410,6 +450,18 @@ function createOrbitWindow() {
 
   attachNavigationGuard(orbitWindow);
 
+  orbitWindow.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      orbitWindow.hide();
+      if (!dashboardWindow || dashboardWindow.isDestroyed()) {
+        createDashboardWindow();
+      } else {
+        dashboardWindow.show();
+      }
+    }
+  });
+
   orbitWindow.on("closed", () => {
     orbitWindow = null;
   });
@@ -452,24 +504,24 @@ ipcMain.on("task-action", (event, { action, payload }) => {
     writeLog("INFO", `Mode transition requested: ${targetMode}`);
 
     if (targetMode === "orbit") {
+      // Hide dashboard window rather than destroying it to prevent RAM churn
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
-        dashboardWindow.close();
-        dashboardWindow = null;
+        dashboardWindow.hide();
       }
       
-      if (!orbitWindow) {
+      if (!orbitWindow || orbitWindow.isDestroyed()) {
         createOrbitWindow();
       } else {
         orbitWindow.show();
       }
       
     } else {
+      // Hide orbit window rather than destroying it
       if (orbitWindow && !orbitWindow.isDestroyed()) {
-        orbitWindow.close();
-        orbitWindow = null;
+        orbitWindow.hide();
       }
       
-      if (!dashboardWindow) {
+      if (!dashboardWindow || dashboardWindow.isDestroyed()) {
         createDashboardWindow();
       } else {
         dashboardWindow.show();
